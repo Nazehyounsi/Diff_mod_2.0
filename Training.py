@@ -460,8 +460,8 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
     # Calculate the total number of batches
     total_batches = len(dataload_train)
     print(f"Total number of batches: {total_batches}")
-    total_samples = total_batches * batch_size
-    zero_sequences_count = count_zero_sequences(dataload_train)
+    #total_samples = total_batches * batch_size
+    #zero_sequences_count = count_zero_sequences(dataload_train)
     # print("Total of empty actions")
     # print(zero_sequences_count)
     # print("sur un total de ")
