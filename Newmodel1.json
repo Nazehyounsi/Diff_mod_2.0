@@ -4,7 +4,7 @@
     "gamma" : 0.1,
     "base_lr": 0.00001,
     "max_lr": 0.001,
-    "batch_size": 256,
+    "batch_size": 64,
     "num_T": 50,
     "net_type": "transformer",
     "num_event_types": 43,

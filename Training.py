@@ -25,7 +25,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.optim.lr_scheduler import StepLR
 from torch.optim.lr_scheduler import CyclicLR
 
-from Models import Model_mlp_diff,  Model_Cond_Diffusion, EventEmbedder, SequenceTransformer
+from Models import Model_mlp_diff,  Model_Cond_Diffusion, ObservationEmbedder, SpeakingTurnDescriptorEmbedder
 
 import wandb
 
@@ -87,13 +87,19 @@ lrate = config.get("learning_rate", 1e-4)
 base_lr =config.get("base_lr", 0.00001)
 max_lr =config.get("max_lr", 0.001)
 gamma = config.get("gamma", 0.1)
+#sampling_rate = config.get("sampling_rate", 25)
 batch_size = config.get("batch_size", 32)
 n_T = config.get("num_T", 50)
 net_type = config.get("net_type", "transformer")
-num_event_types = config.get("num_event_types", 43)
+num_event_types = config.get("num_event_types", 12)
 event_embedding_dim = config.get("event_embedding_dim", 16)
-continuous_embedding_dim = config.get("continuous_embedding_dim", 3)
+#continuous_embedding_dim = config.get("continuous_embedding_dim", 3)
 embed_output_dim = config.get("embed_output_dim", 16)
+num_facial_types = 7
+facial_embed_dim = 16
+cnn_output_dim = 128  # Output dimension after passing through CNN layers
+lstm_hidden_dim = 64
+
 
 # start a new wandb run to track this script
 wandb.init(
@@ -108,6 +114,19 @@ wandb.init(
         "epochs": n_epoch,
     }
 )
+
+def count_zero_sequences(dataloader):
+    count = 0
+    for x_batch, y_batch, _, _ in dataloader:
+        print("the observation sequence is : ")
+        print(x_batch[0])
+        print(" the action sequence is : ")
+        print(y_batch[0])
+        # # Check if each sequence contains only 0 and sum the True values
+        # contains_only_zeros = (x_batch == 0).all(dim=1)
+        # count += contains_only_zeros.sum().item()
+    return count
+
 def is_valid_chunk(chunk):
     if not chunk[0]:  # Check if the chunk[0] is an empty list
         return False
@@ -128,7 +147,34 @@ def log_scatter_plot(x, y, title, x_label, y_label, key):
     # Log using wandb
     wandb.log({key: wandb.Image(plt)})
     plt.close()
-    
+
+def transform_action_to_sequence(events, sequence_length):
+    # This remains the same as the transform_to_sequence function
+    sequence = [0] * sequence_length
+    for event in events:
+
+        event_type, start_time, duration = event
+        start_sample = int(start_time * sequence_length)
+        end_sample = int(start_sample + (duration * sequence_length))
+        for i in range(start_sample, min(end_sample, sequence_length)):
+            sequence[i] = event_type
+    return sequence
+
+def transform_obs_to_sequence(events, sequence_length):
+    facial_expression_events = [21, 27, 31]  # Define facial expression event types
+    sequence = [0] * sequence_length
+    mi_behaviors = []  # To store MI behaviors
+    for event in events:
+        event_type, start_time, duration = event
+        if event_type not in facial_expression_events:
+            mi_behaviors.append(event_type)
+        else:
+            start_sample = int(start_time * sequence_length)
+            end_sample = int(start_sample + (duration * sequence_length))
+            for i in range(start_sample, min(end_sample, sequence_length)):
+                sequence[i] = event_type
+    return sequence, mi_behaviors
+
 def load_data_from_folder(folder_path):
     all_data = []  # This list will hold all our chunks (both observations and actions) from all files.
     total_lines = 0
@@ -172,7 +218,7 @@ def rare_event_criteria(observation, action):
     :return: A string indicating the type of rare event ('observation', 'action', 'both', or None).
     """
     # Define the rare event type for observation and action
-    rare_event_types_observation = [11, 13, 4, 6, 5]
+    rare_event_types_observation = [11, 13, 4, 6, 5, 27, 31]
     rare_event_types_action = [26, 30]  # Example rare event types for action
 
     rare_observation = any(event[0] in rare_event_types_observation for event in observation)
@@ -213,58 +259,72 @@ def oversample_sequences(data, rare_event_criteria, oversampling_factor_obs=3, o
             oversampled_data.append(sequence)
     return oversampled_data
 
-
-
-
 def preprocess_data(data):
     filtered_data = [chunk for chunk in data if is_valid_chunk(chunk)]
+
+    # Compute the average duration of speaking turns
+    total_duration = sum([max(event[2] for event in chunk[0]) for chunk in filtered_data])
+    average_duration = total_duration / len(filtered_data)
+    sequence_length = int(average_duration * 25)  # Assuming 25  SAMPLING RATE IS HERE TO ADJUST
+
     data = filtered_data
+
     for chunk in data:
+        if not chunk[0]:  # Skip if the observation vector is empty
+            continue
 
-        # Observation vector
-        # Standardizing the starting time
-        min_start_time = min([event[1] for event in chunk[0]])
-        for i in range(len(chunk[0])):
-            event = list(chunk[0][i])
-            event[1] -= min_start_time  # Adjust starting time based on the first event in the chunk
-            event[1] = round(event[1], 3)
-            chunk[0][i] = tuple(event)
+        valid_start_times1 = [event[1] for event in chunk[0] if isinstance(event[1], float) and event[1] > 0]
+        valid_start_times2 = [event[1] for event in chunk[1] if isinstance(event[1], float) and event[1] > 0]
 
-        # Normalizing the duration
-        max_duration = max([event[2] for event in chunk[0]])
-        for i in range(len(chunk[0])):
-            event = list(chunk[0][i])
-            event[2] /= max_duration  # Normalize the duration based on the maximum duration in the chunk
-            event[2] = round(event[2], 3)
-            chunk[0][i] = tuple(event)
+        if not valid_start_times1 and valid_start_times2:# Skip if no valid start times
+            continue
+        min_start_time = min(min(valid_start_times1), min(valid_start_times2))
 
-            # Action vector
-            # Standardizing the starting time
-            min_start_time = min([event[1] for event in chunk[1]])
-            for i in range(len(chunk[1])):
-                event = list(chunk[1][i])
-                event[1] -= min_start_time  # Adjust starting time based on the first event in the chunk
-                event[1] = round(event[1], 3)
-                chunk[1][i] = tuple(event)
+        # Calculate speaking turn duration as the end of the last event minus min_start_time
+        valid_end_times1 = [(event[1] + event[2]) for event in chunk[0] if isinstance(event[1], float) and event[1] > 0]
+        valid_end_times2 = [(event[1] + event[2]) for event in chunk[1] if isinstance(event[1], float) and event[1] > 0]
+        max_end_time = max(max(valid_end_times1), max(valid_end_times2)) if valid_end_times1 and valid_end_times2 else 0
+        speaking_turn_duration = max_end_time - min_start_time
 
-            # Normalizing the duration
-            max_duration = max([event[2] for event in chunk[1]])
-            for i in range(len(chunk[1])):
-                event = list(chunk[1][i])
-                event[2] /= max_duration  # Normalize the duration based on the maximum duration in the chunk
-                event[2] = round(event[2], 3)
-                chunk[1][i] = tuple(event)
+        if speaking_turn_duration <= 0: # Skip turns with non-positive duration
+            continue
 
-    return data
+        # Normalize start times and durations within each chunk
+        for vector in [0, 1]:  # 0 for observation, 1 for action
+            for i, event in enumerate(chunk[vector]):
+                event_type, start_time, duration = event
+                if start_time == 0.0:
+                    continue
+                if start_time<min_start_time:
+                    start_time = min_start_time
+                # Standardize the starting times relative to the speaking turn's start
+                normalized_start_time = (start_time - min_start_time)
+
+
+                # Normalize start times and durations against the speaking turn duration
+                normalized_start_time = normalized_start_time / speaking_turn_duration
+                normalized_duration = duration / speaking_turn_duration
+
+
+                # Update the event with normalized values
+                chunk[vector][i] = (event_type, round(normalized_start_time, 3), round(normalized_duration, 3))
+
+    return data, sequence_length
 
 # Assuming the functions 'load_data_from_folder' and 'preprocess_data' are defined as in your provided code.
 
 class MyCustomDataset(Dataset):
     def __init__(self, folder_path, train_or_test="train", train_prop=0.90, oversample_rare_events=False):
+
+        # Define new mappings for facial expressions and MI behaviors
+        facial_expression_mapping = {0: 0, 16: 1, 26: 2, 30: 3, 21: 4, 27: 5, 31: 6}
+        mi_behavior_mapping = {39: 1, 38: 2, 40: 3, 41: 4, 3: 5, 4: 6, 5: 7, 6: 8, 8: 9, 11: 10, 13: 11, 12: 12}
+
         # Load and preprocess data
         raw_data = load_data_from_folder(folder_path)
         self.raw_data_length = len(raw_data)
-        processed_data = preprocess_data(raw_data)
+        processed_data, sequence_length = preprocess_data(raw_data)
+        self.sequence_length = sequence_length
 
         # Oversample sequences with rare events
         if oversample_rare_events:
@@ -279,69 +339,97 @@ class MyCustomDataset(Dataset):
         else:
             raise ValueError("train_or_test should be either 'train' or 'test'")
 
-        # Transform data into the new format
+        # # Transform data into previous action integration (Tour/tour)
+        # self.transformed_data = []
+        # last_action = None  # Initialize last action as None
+        # for observation, action, chunk_descriptor in self.data:
+        #     for i in range(len(action)):
+        #         if i == 0 and last_action is not None:
+        #             prev_action = last_action
+        #         else:
+        #             prev_action = action[i - 1] if i > 0 else [0] * len(
+        #                 action[0])  # Use zero vector if no previous action
+        #
+        #         x = observation + [prev_action]
+        #         y = action[i]
+        #         self.transformed_data.append((x, y, chunk_descriptor))
+        #
+        #     last_action = action[-1]  # Save the last action of the current sequence
+
+        self.processed_data = processed_data
+
+        # Transform data into sequences
         self.transformed_data = []
-        last_action = None  # Initialize last action as None
-        for observation, action, chunk_descriptor in self.data:
-            for i in range(len(action)):
-                if i == 0 and last_action is not None:
-                    prev_action = last_action
-                else:
-                    prev_action = action[i - 1] if i > 0 else [0] * len(
-                        action[0])  # Use zero vector if no previous action
+        for observation, action, chunk_descriptor in processed_data:
+            # Transform both observation and action to sequences
+            x, z = transform_obs_to_sequence(observation, sequence_length)
+            y = transform_action_to_sequence(action, sequence_length)
 
-                x = observation + [prev_action]
-                y = action[i]
-                self.transformed_data.append((x, y, chunk_descriptor))
+            # Reassign event values based on the new mappings
+            x = [facial_expression_mapping.get(item, item) for item in x]
+            y = [facial_expression_mapping.get(item, item) for item in y]
+            z = [mi_behavior_mapping.get(item, item) for item in z]  # Assuming z is a list of MI behavior events
 
-            last_action = action[-1]  # Save the last action of the current sequence
+            self.transformed_data.append((x, y, z, chunk_descriptor))
+
 
     def __len__(self):
         # Return the number of transformed data points
         return len(self.transformed_data)
 
+    def get_seq_len(self):
+        # Return the number of transformed data points
+        return self.sequence_length
+
     def __getitem__(self, idx):
         # Retrieve the transformed data point at the given index
-        x, y, chunk_descriptor = self.transformed_data[idx]
+        x, y, z, chunk_descriptor = self.transformed_data[idx]
 
         # Convert lists into tensors for PyTorch
         x_tensor = torch.tensor(x, dtype=torch.float32)
         y_tensor = torch.tensor(y, dtype=torch.float32)
+        z_tensor = torch.tensor(z, dtype=torch.float32)
         chunk_descriptor_tensor = torch.tensor(chunk_descriptor, dtype=torch.float32)
 
-        return x_tensor, y_tensor, chunk_descriptor_tensor
+        return x_tensor, y_tensor, z_tensor, chunk_descriptor_tensor
 
     def collate_fn(batch):
         # Unzip the batch into separate lists
-        x_data, y_data, chunk_descriptors = zip(*batch)
+        x_data, y_data, z_data, chunk_descriptors = zip(*batch)
 
-        # Separate observations and previous actions
-        observations = [x[:-1] for x in x_data]  # All elements except the last one
-        prev_actions = [x[-1] for x in x_data]  # Only the last element
+        # # Separate observations and previous actions
+        # observations = [x[:-1] for x in x_data]  # All elements except the last one
+        # prev_actions = [x[-1] for x in x_data]  # Only the last element
 
         # Pad the observation sequences
-        observations_padded = torch.nn.utils.rnn.pad_sequence([obs.clone().detach() for obs in observations],
+        observations_padded = torch.stack([x.clone().detach() for x in x_data])
+        #
+        y_padded = torch.stack([y.clone().detach() for y in y_data])
+        z_padded = torch.nn.utils.rnn.pad_sequence([z.clone().detach() for z in z_data],
                                                               batch_first=True, padding_value=0)
 
         #prev_actions_tensor = torch.stack([torch.tensor(pa) for pa in prev_actions])
 
         # Convert previous actions to tensor
-        prev_actions_tensor = torch.stack([pa.clone().detach() for pa in prev_actions])
+        #prev_actions_tensor = torch.stack([pa.clone().detach() for pa in prev_actions])
 
         # Convert chunk_descriptors to tensor
         chunk_descriptors_tensor = torch.stack([cd.clone().detach() for cd in chunk_descriptors])
 
         # Concatenate the padded observations with the previous actions and potentially the chunk_descriptor
-        x_tensors = torch.cat([observations_padded, prev_actions_tensor.unsqueeze(1)], dim=1) #Puis ajouter le chunk descriptor dans la concatenation après le prev_action
+        #x_tensors = torch.cat([observations_padded, prev_actions_tensor.unsqueeze(1)], dim=1) #Puis ajouter le chunk descriptor dans la concatenation après le prev_action
 
-        # Convert y_data to tensor
-        y_tensors = torch.stack([y.clone().detach() for y in y_data])
+        x_tensors = observations_padded
+        z_tensors = z_padded
+        y_tensors = y_padded
+
+        #y_tensors = torch.stack([y.clone().detach() for y in y_data])
 
 
-        return x_tensors, y_tensors, chunk_descriptors_tensor
+        return x_tensors, y_tensors, z_tensors, chunk_descriptors_tensor
 
 
-def train_claw(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, GUIDE_WEIGHTS):
+def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, GUIDE_WEIGHTS):
     # Unpack experiment settings
     exp_name = experiment["exp_name"]
     model_type = experiment["model_type"]
@@ -368,17 +456,25 @@ def train_claw(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, ne
     torch_data_train = MyCustomDataset(folder_path, train_or_test="train", train_prop=0.90, oversample_rare_events=True)
     test_dataset = MyCustomDataset(folder_path, train_or_test="test", train_prop=0.90, oversample_rare_events=True)
     dataload_train = DataLoader(torch_data_train, batch_size=batch_size, shuffle=True, collate_fn=MyCustomDataset.collate_fn)
-    test_dataloader = DataLoader(test_dataset, batch_size=256, shuffle=True, collate_fn=MyCustomDataset.collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, collate_fn=MyCustomDataset.collate_fn)
+
+    sequence_length = torch_data_train.get_seq_len()
 
     # Calculate the total number of batches
     total_batches = len(dataload_train)
     print(f"Total number of batches: {total_batches}")
+    total_samples = total_batches * batch_size
+    zero_sequences_count = count_zero_sequences(dataload_train)
+    # print("Total of empty actions")
+    # print(zero_sequences_count)
+    # print("sur un total de ")
+    # print(total_samples)
 
 
-    event_embedder = EventEmbedder(num_event_types, event_embedding_dim, continuous_embedding_dim,embed_output_dim, event_weights=None)
-
+    observation_embedder = ObservationEmbedder(num_facial_types, facial_embed_dim, cnn_output_dim, lstm_hidden_dim, sequence_length)
+    mi_embedder = SpeakingTurnDescriptorEmbedder(num_event_types, event_embedding_dim, embed_output_dim)
    # Determine the shape of input and output tensors
-    sample_observation, sample_action,_ = torch_data_train[0]
+    sample_observation, sample_action, sample_z, _ = torch_data_train[0]
     input_shape = sample_observation.shape
     output_dim = sample_action.shape[0]
 
@@ -393,10 +489,11 @@ def train_claw(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, ne
     if model_type == "diffusion":
         #ici qu'on appel le model_mlp_diff fusionné a mon embedding model
         nn_model = Model_mlp_diff(
-            event_embedder, y_dim, net_type="transformer").to(device)
+            observation_embedder, mi_embedder, sequence_length, net_type="transformer").to(device)
         model = Model_Cond_Diffusion(
             nn_model,
-            event_embedder,
+            observation_embedder,
+            mi_embedder,
             betas=(1e-4, 0.02),
             n_T=n_T,
             device=device,
@@ -435,12 +532,13 @@ def train_claw(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, ne
             # train loop
             pbar = tqdm(dataload_train)
             loss_ep, n_batch = 0, 0
-            for x_batch, y_batch, chunk_descriptor in pbar:
+            for x_batch, y_batch, z_batch, chunk_descriptor in pbar:
                 #need to concat the chunk descriptor after the first test and see its impact
                 x_batch = x_batch.type(torch.FloatTensor).to(device) #obs
                 y_batch = y_batch.type(torch.FloatTensor).to(device) #targets
+                z_batch = z_batch.type(torch.FloatTensor).to(device)
 
-                loss = model.loss_on_batch(x_batch, y_batch)
+                loss = model.loss_on_batch(x_batch, y_batch, z_batch)
                 optim.zero_grad()
                 loss.backward()
                 loss_ep += loss.detach().item()
@@ -459,69 +557,15 @@ def train_claw(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, ne
 
         model.eval()
 
-        #num_samples = 100
-        #idxs = random.sample(range(len(test_dataset)),num_samples) # To sample n random data point from test data then duplicate it ...
-
-        # extra_diffusion_steps = EXTRA_DIFFUSION_STEPS if exp_name == "diffusion" else [0]
-        # use_kde = [False, True] if exp_name == "diffusion" else [False]
-        # guide_weight_list = GUIDE_WEIGHTS if exp_name == "cfg" else [None]
-        #
-        # #Possible to replace this big loop by direcly fixing values for extra_diffusion step, guide_weight_lists and use kde
-        # for extra_diffusion_step, guide_weight, use_kde in product(extra_diffusion_steps, guide_weight_list, use_kde): # cette loop sert a test les perf avec les differentes config
-        #     if extra_diffusion_step != 0 and use_kde:
-        #         continue
-        #     # for idx in idxs: # To sample n random data point from test data then duplicate it ...
-        #     #     print("new sample being tested")
-        #     #     # Retrieve the data point from the test dataset
-        #     #     x_eval, _, _ = test_dataset[idx]
-        #     #     x_eval = x_eval.to(device)
-        #     for x_batch, y_batch,_ in test_dataloader:
-        #         print("new batch is being processed")
-        #         for j in range(6 if not use_kde else 300):
-        #                 # x_eval_ = x_eval.repeat(10, 1, 1) # To sample n random data point from test data then duplicate it ...
-        #                 x_eval_ = x_batch
-        #                 with torch.no_grad():  # Use torch.no_grad() for evaluation
-        #                     if exp_name == "cfg":
-        #                         model.guide_w = guide_weight
-        #                     if model_type != "diffusion":
-        #                         y_pred_ = model.sample(x_eval_).detach().cpu().numpy()
-        #                     else:
-        #                         if extra_diffusion_step == 0:
-        #                             y_pred_ = model.sample(x_eval_).detach().cpu().numpy()
-        #                             print("predition : ")
-        #                             print(y_pred_[0])
-        #                             print("target : ")
-        #                             print(y_batch[0])
-        #                             if use_kde:
-        #                                 # kde
-        #                                 torch_obs_many = x_eval_
-        #                                 action_pred_many = model.sample(torch_obs_many).cpu().numpy()
-        #                                 # fit kde to the sampled actions
-        #                                 kde = KernelDensity(kernel='gaussian', bandwidth=0.1).fit(action_pred_many)
-        #                                 # choose the max likelihood one
-        #                                 log_density = kde.score_samples(action_pred_many)
-        #                                 idx = np.argmax(log_density)
-        #                                 y_pred_ = action_pred_many[idx][None, :]
-        #                                 print(y_pred_)
-        #                         else:
-        #                             y_pred_ = model.sample_extra(x_eval_,
-        #                                                          extra_steps=extra_diffusion_step).detach().cpu().numpy()
-        #                 if j == 0:
-        #                     y_pred = y_pred_
-        #                 else:
-        #                     y_pred = np.concatenate([y_pred, y_pred_])
-        #
-        #         # Store or process the predictions as needed
-        #         test_results.append(y_pred)
-
 # EVALUATION OF NOISE ESTIMATION
         noise_estimator = model.nn_model
         loss_mse = nn.MSELoss()
         total_validation_loss = 0.0
 
-        for x_batch, y_batch, _ in test_dataloader:
+        for x_batch, y_batch, z_batch, _ in test_dataloader:
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
+            z_batch = z_batch.to(device)
 
             # Sample t uniformly for each data point in the batch
             t_noise = torch.randint(1, model.n_T + 1, (y_batch.shape[0], 1)).to(device)
@@ -534,7 +578,7 @@ def train_claw(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, ne
 
             with torch.no_grad():
                 # Use the model to estimate the noise
-                estimated_noise = noise_estimator(y_noised, x_batch, t_noise.float() / model.n_T)
+                estimated_noise = noise_estimator(y_noised, x_batch, z_batch, t_noise.float() / model.n_T)
 
             # Calculate the loss between the true noise and the estimated noise
             validation_loss = loss_mse(noise, estimated_noise)
@@ -551,26 +595,12 @@ def train_claw(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, ne
         kde_samples = args.evaluation_param
         total_batches = len(test_dataloader)
 
-        total_mse_starting_time = 0.0
-        total_mse_duration = 0.0
-        num_datapoint =0
-
         print(f"Total number of test batches: {total_batches}")
-        # Initialize lists to store targets and predictions
-        targets_event_type, preds_event_type = [], []
-        targets_starting_time, preds_starting_time = [], []
-        targets_duration, preds_duration = [], []
-        # Assuming you have 4 possible event types: 16, 0, 26, 30
-        action_types = [16, 0, 26, 30]
-        class_names = ["16", "0", "26", "30"]
 
-        # Initialize arrays to store true and predicted event types
-        true_event_types = []
-        predicted_event_types = []
-
-        for x_batch, y_batch, _ in test_dataloader:
+        for x_batch, y_batch, z_batch, _ in test_dataloader:
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
+            z_batch = z_batch.to(device)
 
             # Generate multiple predictions for KDE
             all_predictions = []
@@ -579,7 +609,7 @@ def train_claw(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, ne
                 with torch.no_grad():
                     # if exp_name == "cfg":
                     #     model.guide_w = guide_weight
-                    y_pred_= model.sample(x_batch).detach().cpu().numpy()
+                    y_pred_= model.sample(x_batch,z_batch).detach().cpu().numpy()
                     #y_pred_, y_pred_trace_ = model.sample(x_batch, return_y_trace=True)
                     all_predictions.append(y_pred_)
                     #all_traces.append(y_pred_trace_)
@@ -599,67 +629,8 @@ def train_claw(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, ne
                 # print("la prediction :")
                 # print(best_predictions[i])
 
-            # Graph same space : Collect the targets and predictions for each component
-            targets_event_type.extend(y_batch.cpu().numpy()[:, 0].tolist())
-            preds_event_type.extend(best_predictions[:, 0].tolist())
-            targets_starting_time.extend(y_batch.cpu().numpy()[:, 1].tolist())
-            preds_starting_time.extend(best_predictions[:, 1].tolist())
-            targets_duration.extend(y_batch.cpu().numpy()[:, 2].tolist())
-            preds_duration.extend(best_predictions[:, 2].tolist())
-
-
-            # Similarity Matrix : Collect the event types in int form
-            true_event_types.extend(y_batch.cpu().numpy()[:, 0].astype(int))
-            # Round the predicted event types and convert to int
-            pred_event_type_rounded = np.rint(best_predictions[:, 0]).astype(int)
-            predicted_event_types.extend(pred_event_type_rounded)
-            # Calculate MSE for each sample and accumulate For continious predictions
-            mse_starting_time = ((y_batch.cpu().numpy()[:, 1] - best_predictions[:, 1]) ** 2).mean()
-            mse_duration = ((y_batch.cpu().numpy()[:, 2] - best_predictions[:, 2]) ** 2).mean()
-            total_mse_starting_time += mse_starting_time
-            total_mse_duration += mse_duration
-            num_datapoint += y_batch.shape[0]
-
-
-        # After collecting data in your loop, call the function to create and log plots
-        log_scatter_plot(targets_event_type, preds_event_type, "Event Type Predictions", "Target", "Prediction", "event_type_plot")
-        log_scatter_plot(targets_starting_time, preds_starting_time, "Starting Time Predictions", "Target", "Prediction", "starting_time_plot")
-        log_scatter_plot(targets_duration, preds_duration, "Duration Predictions", "Target", "Prediction", "duration_plot")
-
-        print("scatter done")
-
-        # Average MSE per sample
-        avg_mse_starting_time_per_sample = total_mse_starting_time / num_datapoint
-        avg_mse_duration_per_sample = total_mse_duration / num_datapoint
-        wandb.log({"avg_mse_starting_time_per_sample": avg_mse_starting_time_per_sample, "avg_mse_duration_per_sample": avg_mse_duration_per_sample})
-
-        print("Mse done")
-
-        # Compute the confusion matrix
-
-        # Adjust predicted event types when loss > 0.1
-        filtered_pred_event_types = [int(round(pred)) if int(round(pred)) in action_types else action_types[1] for pred in predicted_event_types]
-
-        cm = confusion_matrix(true_event_types, filtered_pred_event_types, labels=action_types)
-        # Plot the confusion matrix using matplotlib
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(cm, annot=True, fmt='g', cmap='Blues', xticklabels=action_types, yticklabels=action_types)
-        plt.xlabel('Predicted')
-        plt.ylabel('True')
-        plt.title('Confusion Matrix')
-
-        # Save the plot to a file
-        plt.savefig("confusion_matrix.png")
-
-        # Log the plot to wandb
-        wandb.log({"confusion_matrix": wandb.Image("confusion_matrix.png")})
-
-        print("Confusion matrix done")
-
-        plt.show()
-
 
 if __name__ == "__main__":
     os.makedirs(SAVE_DATA_DIR, exist_ok=True)
     for experiment in EXPERIMENTS:
-        train_claw(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, GUIDE_WEIGHTS)
+        training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, GUIDE_WEIGHTS)

@@ -16,44 +16,74 @@ class TimeSiren(nn.Module):
         x = self.lin2(x)
         return x
 
-class EventEmbedder(nn.Module):
-    def __init__(self, num_event_types, event_embedding_dim, continuous_embedding_dim,output_dim,event_weights=None):
-        super(EventEmbedder, self).__init__()
-        self.event_embedding = nn.Embedding(num_event_types, event_embedding_dim)
-        self.duration_embedding = nn.Linear(1, continuous_embedding_dim)
-        self.start_time_embedding = nn.Linear(1, continuous_embedding_dim)
-        self.output_dim = output_dim
-        input_dim = event_embedding_dim + 2 * continuous_embedding_dim
-        self.interaction_lstm = nn.LSTM(input_dim,output_dim, batch_first=True)
 
-        # Initialize event type weights
-        if event_weights is None:
-            # If no weights are provided, initialize as ones (i.e., no change in importance).
-            self.event_weights = nn.Parameter(torch.ones(num_event_types), requires_grad=False)
-        else:
-            self.event_weights = nn.Parameter(torch.tensor(event_weights), requires_grad=False)
+class SpeakingTurnDescriptorEmbedder(nn.Module):
+    def __init__(self, num_event_types, embedding_dim, output_dim):
+        super(SpeakingTurnDescriptorEmbedder, self).__init__()
+        # Embedding layer for each category in the descriptor
+        self.embedding = nn.Embedding(num_event_types, embedding_dim)
+        self.output_dim = output_dim
+
+        # Linear layer to process concatenated embeddings
+        self.fc = nn.Linear(embedding_dim * 2, self.output_dim)  # *2 because we concatenate two embeddings
+
+    def forward(self, x):
+        # Assuming x is of shape [batch_size, 2], where each row is a descriptor (int1, int2)
+        elem1 = x[:, 0].long()
+        elem2 = x[:, 1].long()
+        embed_1 = self.embedding(elem1)
+        embed_2 = self.embedding(elem2)
+
+        # Concatenate the embeddings
+        concatenated = torch.cat((embed_1, embed_2), dim=1)
+
+        # Process the concatenated vector through a linear layer
+        output = self.fc(concatenated)
+
+        return output
+
+class ObservationEmbedder(nn.Module):
+    def __init__(self, num_facial_types, facial_embedding_dim, cnn_output_dim, lstm_hidden_dim, sequence_length):
+        super(ObservationEmbedder, self).__init__()
+        self.embedding = nn.Embedding(num_facial_types, facial_embedding_dim)
+
+        # Define CNN layers
+        self.conv1 = nn.Conv1d(in_channels=facial_embedding_dim, out_channels=64, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv1d(in_channels=64, out_channels=cnn_output_dim, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
+        self.output_dim = lstm_hidden_dim
+
+        # Calculate the dimensionality after CNN and pooling layers
+        cnn_flattened_dim = cnn_output_dim * (sequence_length // 2 // 2)
+
+        # Define LSTM layer
+        self.lstm = nn.LSTM(input_size=cnn_flattened_dim, hidden_size=lstm_hidden_dim, batch_first=True)
+
+        # Optional: Additional layer(s) can be added here to further process LSTM output if needed
 
     def forward(self, x):
 
-        event_type_indices = x[:, :, 0].long()
-        event_type_embed = self.event_embedding(event_type_indices)
-        duration_embed = self.duration_embedding(x[:, :, 1].unsqueeze(-1))
-        start_time_embed = self.start_time_embedding(x[:, :, 2].unsqueeze(-1))
+        x = x.long()
+        # Embedding layer
+        x = self.embedding(x)  # Expecting x to be [batch_size, sequence_length]
+        x = x.permute(0, 2, 1)  # Change to [batch_size, embedding_dim, sequence_length] for CNN
 
-        # if add weights on events
-        event_type_weights = self.event_weights[event_type_indices]
-        event_type_embed = event_type_embed * event_type_weights.unsqueeze(-1)
+        # CNN layers
+        x = torch.relu(self.conv1(x))
+        x = self.pool(x)
+        x = torch.relu(self.conv2(x))
+        x = self.pool(x)
 
-        concatenated_embeddings = torch.cat([event_type_embed, duration_embed, start_time_embed], dim=-1)
-        output, _ = self.interaction_lstm(concatenated_embeddings)
+        # Flatten output for LSTM
+        x = x.view(x.size(0), 1, -1)  # Flatten CNN output
 
-        last_element_weight = 1.5  # This is an example weight, adjust as needed
-        weighted_last_element = output[:, -1, :] * last_element_weight
+        # LSTM layer
+        lstm_out, (hidden, cell) = self.lstm(x)
 
-        # Replace the last element with the weighted version
-        output = torch.cat((output[:, :-1, :], weighted_last_element.unsqueeze(1)), dim=1)
+        # Here you can use hidden or lstm_out depending on your need
+        # For simplicity, we'll consider 'hidden' as the final feature representation
 
-        return output
+        return hidden[-1]  # Returning the last hidden state of LSTM
 
 
 def ddpm_schedules(beta1, beta2, T, is_linear=True):
@@ -93,7 +123,7 @@ def ddpm_schedules(beta1, beta2, T, is_linear=True):
     }
 
 class Model_Cond_Diffusion(nn.Module):
-    def __init__(self, nn_model, event_embedder, betas, n_T, device, x_dim, y_dim, drop_prob=0.1, guide_w=0.0):
+    def __init__(self, nn_model, observation_embedder, mi_embedder, betas, n_T, device, x_dim, y_dim, drop_prob=0.1, guide_w=0.0):
         super(Model_Cond_Diffusion, self).__init__()
         for k, v in ddpm_schedules(betas[0], betas[1], n_T).items():
             self.register_buffer(k, v)
@@ -101,15 +131,15 @@ class Model_Cond_Diffusion(nn.Module):
         self.nn_model = nn_model
         self.n_T = n_T
         self.device = device
-        self.event_embedder = event_embedder
-        self.x_sequence_transformer = SequenceTransformer(16, 16, 8)
+        self.observation_embedder = observation_embedder
+        self.mi_embedder = mi_embedder
         self.drop_prob = drop_prob
         self.loss_mse = nn.MSELoss()
         self.x_dim = x_dim
         self.y_dim = y_dim
         self.guide_w = guide_w
 
-    def loss_on_batch(self, x_batch, y_batch):
+    def loss_on_batch(self, x_batch, y_batch, z_batch):
 
         _ts = torch.randint(1, self.n_T + 1, (y_batch.shape[0], 1)).to(self.device)
 
@@ -123,12 +153,12 @@ class Model_Cond_Diffusion(nn.Module):
         # add noise to clean target actions
         y_t = self.sqrtab[_ts] * y_batch + self.sqrtmab[_ts] * noise
         # use nn model to predict noise
-        noise_pred_batch = self.nn_model(y_t, x_batch, _ts / self.n_T) #ici possible d'ajouter context_mask en input
+        noise_pred_batch = self.nn_model(y_t, x_batch, z_batch, _ts / self.n_T) #ici possible d'ajouter context_mask en input
 
         # return mse between predicted and true noise
         return self.loss_mse(noise, noise_pred_batch)
 
-    def sample(self, x_batch, return_y_trace=False):
+    def sample(self, x_batch, z_batch, return_y_trace=False):
         # also use this as a shortcut to avoid doubling batch when guide_w is zero
         is_zero = False
         if self.guide_w > -1e-3 and self.guide_w < 1e-3:
@@ -137,7 +167,7 @@ class Model_Cond_Diffusion(nn.Module):
         # how many noisy actions to begin with
         n_sample = x_batch.shape[0]
 
-        y_shape = (n_sample, 3)
+        y_shape = (n_sample, x_batch.shape[1])
 
 
         # sample initial noise, y_0 ~ N(0, 1),
@@ -148,9 +178,11 @@ class Model_Cond_Diffusion(nn.Module):
             if len(x_batch.shape) > 2:
                 # repeat x_batch twice, so can use guided diffusion
                 x_batch = x_batch.repeat(2, 1, 1, 1)
+                z_batch = z_batch.repeat(2, 1, 1, 1)
             else:
                 # repeat x_batch twice, so can use guided diffusion
                 x_batch = x_batch.repeat(2, 1)
+                z_batch = z_batch.repeat(2, 1)
 
             # half of context will be zero
             context_mask = torch.zeros(x_batch.shape[0]).to(self.device)
@@ -180,7 +212,7 @@ class Model_Cond_Diffusion(nn.Module):
             # if extract_embedding:
             #     eps = self.nn_model(y_i, x_batch, t_is) #ici possible d'input le context_mask
 
-            eps = self.nn_model(y_i, x_batch, t_is)
+            eps = self.nn_model(y_i, x_batch, z_batch, t_is)
             if not is_zero:
                 eps1 = eps[:n_sample]
                 eps2 = eps[n_sample:]
@@ -338,57 +370,34 @@ class FCBlock(nn.Module):
         return self.model(x)
 
 
-class SequenceTransformer(nn.Module):
-    def __init__(self, input_dim, trans_emb_dim, nheads):
-        super(SequenceTransformer, self).__init__()
-        self.trans_emb_dim = trans_emb_dim
-        self.input_projection = nn.Linear(input_dim, trans_emb_dim)
-        self.flag = False
-        if input_dim != trans_emb_dim:
-            self.flag = True
-        else:
-            pass
+class Merger(nn.Module):
+    def __init__(self, observation_dim, speaking_turn_dim, output_dim):
+        super(Merger, self).__init__()
+        self.input_dim = observation_dim + speaking_turn_dim
+        intermediate_dim = (self.input_dim + output_dim) // 2  # Example intermediate size
 
+        self.fc1 = nn.Linear(self.input_dim, intermediate_dim)
+        self.fc2 = nn.Linear(intermediate_dim, output_dim)
+        self.relu = nn.ReLU()
+        self.residual_connection = nn.Linear(self.input_dim, output_dim)
 
+        self.norm1 = nn.LayerNorm(intermediate_dim)
+        self.norm2 = nn.LayerNorm(output_dim)
 
-        # Positional embedding for transformer
-        self.pos_embed = TimeSiren(1, trans_emb_dim)
+    def forward(self, observation_embedding, speaking_turn_embedding):
+        combined = torch.cat((observation_embedding, speaking_turn_embedding), dim=1)
 
-        # Transformer encoder layer
-        self.transformer_encoder = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model=trans_emb_dim, nhead=nheads, dim_feedforward=trans_emb_dim),
-            num_layers=6
-        )
+        # First layer
+        x = self.fc1(combined)
+        x = self.relu(x)
+        x = self.norm1(x)
 
-        # Output linear layer to get a single vector representation
-        self.output_linear = nn.Linear(trans_emb_dim, trans_emb_dim)
-
-    def forward(self, x):
-
-        if self.flag == True:
-            x = self.input_projection(x)
-        else:
-            pass
-
-        # Transpose x to match PyTorch's transformer input shape requirements
-        x = x.transpose(0, 1)  # Shape: [seq_length, batch_size, features_dim]
-
-        # Apply positional encoding
-        seq_length, batch_size, _ = x.shape
-        positions = torch.arange(seq_length, dtype=torch.float, device=x.device).unsqueeze(-1)
-        pos_encoding = self.pos_embed(positions)
-
-
-        x = x + pos_encoding.unsqueeze(1).expand(-1, batch_size, -1)
-
-        # Pass through the transformer encoder
-        x = self.transformer_encoder(x)
-
-        # Aggregate sequence information into a single vector (e.g., by averaging)
-        x = x.mean(dim=0)
-
-        # Apply final linear layer
-        x = self.output_linear(x)
+        # Second layer with residual connection
+        x = self.fc2(x)
+        residual = self.residual_connection(combined)
+        x += residual  # Add residual
+        x = self.relu(x)
+        x = self.norm2(x)
 
         return x
 class TransformerEncoderBlock(nn.Module):
@@ -453,10 +462,11 @@ class TransformerEncoderBlock(nn.Module):
         return attn1_c
 
 class Model_mlp_diff(nn.Module):
-    def __init__(self, event_embedder, y_dim, net_type="transformer"):
+    def __init__(self, observation_embedder, mi_embedder, sequence_length, net_type="transformer"):
         super(Model_mlp_diff, self).__init__()
-        self.event_embedder = event_embedder
-        self.time_siren = TimeSiren(1, event_embedder.output_dim)
+        self.observation_embedder = observation_embedder
+        self.mi_embedder = mi_embedder
+        self.time_siren = TimeSiren(1, mi_embedder.output_dim)
         self.net_type = net_type
 
         # Transformer specific initialization
@@ -465,13 +475,13 @@ class Model_mlp_diff(nn.Module):
         self.transformer_dim = self.trans_emb_dim * self.nheads
 
         # Initialize SequenceTransformers for y and x
-        self.x_sequence_transformer = SequenceTransformer(event_embedder.output_dim, 16, 8)
+        self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, 32)
 
 
         # Linear layers to project embeddings to transformer dimension
-        self.t_to_input = nn.Linear(event_embedder.output_dim, self.trans_emb_dim)
-        self.y_to_input = nn.Linear(3, self.trans_emb_dim)
-        self.x_to_input = nn.Linear(16, self.trans_emb_dim)
+        self.t_to_input = nn.Linear(mi_embedder.output_dim, self.trans_emb_dim)
+        self.y_to_input = nn.Linear(sequence_length, self.trans_emb_dim)
+        self.x_to_input = nn.Linear(32, self.trans_emb_dim)
 
         # Positional embedding for transformer
         self.pos_embed = TimeSiren(1, self.trans_emb_dim)
@@ -480,9 +490,9 @@ class Model_mlp_diff(nn.Module):
         self.transformer_block1 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
 
         # Final layer to project transformer output to desired output dimension
-        self.final = nn.Linear(self.trans_emb_dim * 3, 3)  # Adjust the output dimension as needed
+        self.final = nn.Linear(self.trans_emb_dim * 3, sequence_length)  # Adjust the output dimension as needed
 
-    def forward(self, y, x, t):
+    def forward(self, y, x, z, t):
 
         embedded_t = self.time_siren(t)
 
@@ -495,11 +505,11 @@ class Model_mlp_diff(nn.Module):
         # x = x + embed_chunk_descriptor
 
         #comment this if chunk descriptor case
-        x = self.event_embedder(x)
+        x = self.observation_embedder(x)
 
-        # Transform sequences
-        x = self.x_sequence_transformer(x)
-        #transformed_y = self.y_sequence_transformer(y)
+        z = self.mi_embedder(z)
+
+        x = self.merger(x,z)
 
         # Project embeddings to transformer dimension
         t_input = self.t_to_input(embedded_t)
