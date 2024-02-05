@@ -449,9 +449,6 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         # Update the dataset path here (dataset for local run)
         folder_path = 'C:/Users/NEZIH YOUNSI/Desktop/Hcapriori_input/Observaton_Context_Tuples'
 
-
-
-
     # Use MyCustomDataset instead of ClawCustomDataset
     torch_data_train = MyCustomDataset(folder_path, train_or_test="train", train_prop=0.90, oversample_rare_events=True)
     test_dataset = MyCustomDataset(folder_path, train_or_test="test", train_prop=0.90, oversample_rare_events=True)
