@@ -41,6 +41,8 @@ parser.add_argument('--evaluate', action='store_true',help='Run evaluation')
 parser.add_argument('--gpu', action='store_true',help='Run evaluation')
 parser.add_argument('--expo', action='store_true', help='Run training')
 parser.add_argument('--cycle', action='store_true', help='Run training')
+parser.add_argument('--concat', action='store_true', help='Run training')
+parser.add_argument('--concat2', action='store_true', help='Run training')
 parser.add_argument('--evaluation_param', type=int, default=10, help='Integer parameter for evaluation (default: 0)')
 
 # Parse arguments
@@ -99,6 +101,7 @@ num_facial_types = 7
 facial_embed_dim = 32
 cnn_output_dim = 512  # Output dimension after passing through CNN layers
 lstm_hidden_dim = 256
+concat = None
 
 
 # start a new wandb run to track this script
@@ -480,13 +483,23 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
     y_dim = output_dim
     #torch_data_train.action_all.shape[1]
     t_dim = 1
+
+    if args.concat:
+        concat = True
+    else:
+        concat = False
+
+    if args.concat2:
+        concat2 = True
+    else:
+        concat2 = False
     # create model
 
 
     if model_type == "diffusion":
         #ici qu'on appel le model_mlp_diff fusionné a mon embedding model
         nn_model = Model_mlp_diff(
-            observation_embedder, mi_embedder, sequence_length, net_type="transformer").to(device)
+            observation_embedder, mi_embedder, sequence_length, concat, concat2, net_type="transformer").to(device)
         model = Model_Cond_Diffusion(
             nn_model,
             observation_embedder,

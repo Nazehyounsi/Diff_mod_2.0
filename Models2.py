@@ -355,19 +355,6 @@ class Model_Cond_Diffusion(nn.Module):
         else:
             return y_i
 
-#
-class FCBlock(nn.Module):
-    def __init__(self, in_feats, out_feats):
-        super().__init__()
-        # one layer of non-linearities (just a useful building block to use below)
-        self.model = nn.Sequential(
-            nn.Linear(in_feats, out_feats),
-            nn.BatchNorm1d(num_features=out_feats),
-            nn.GELU(),
-        )
-
-    def forward(self, x):
-        return self.model(x)
 
 
 class Merger(nn.Module):
@@ -400,147 +387,103 @@ class Merger(nn.Module):
         x = self.norm2(x)
 
         return x
-class TransformerEncoderBlock(nn.Module):
-    def __init__(self, trans_emb_dim, transformer_dim, nheads):
-        super(TransformerEncoderBlock, self).__init__()
-        # mainly going off of https://jalammar.github.io/illustrated-transformer/
 
-        self.trans_emb_dim = trans_emb_dim
-        self.transformer_dim = transformer_dim
-        self.nheads = nheads
+class AdvancedTransformerModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim, sequence_length, num_encoder_layers=4, num_decoder_layers=4, num_heads=8, norm_layer=nn.LayerNorm):
+        super(AdvancedTransformerModel, self).__init__()
+        self.input_projection = nn.Linear(input_dim, hidden_dim)
+        self.pos_embedding = nn.Parameter(torch.randn(1, hidden_dim))
+        self.encoder = nn.ModuleList([
+            nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=num_heads)
+            for _ in range(num_encoder_layers)])
+        self.norm = norm_layer(hidden_dim)
+        self.decoder = nn.ModuleList([
+            nn.TransformerDecoderLayer(d_model=hidden_dim, nhead=num_heads)
+            for _ in range(num_decoder_layers)])
+        self.decoder_norm = norm_layer(hidden_dim)
 
-        self.input_to_qkv1 = nn.Linear(self.trans_emb_dim, self.transformer_dim * 3)
-        self.multihead_attn1 = nn.MultiheadAttention(self.transformer_dim, num_heads=self.nheads)
-        self.attn1_to_fcn = nn.Linear(self.transformer_dim, self.trans_emb_dim)
-        self.attn1_fcn = nn.Sequential(
-            nn.Linear(self.trans_emb_dim, self.trans_emb_dim * 4),
-            nn.GELU(),
-            nn.Linear(self.trans_emb_dim * 4, self.trans_emb_dim),
+        self.final_projection = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.LeakyReLU(True),
+            nn.Linear(hidden_dim // 2, sequence_length)
         )
-        self.norm1a = nn.BatchNorm1d(self.trans_emb_dim)
-        self.norm1b = nn.BatchNorm1d(self.trans_emb_dim)
 
-    def split_qkv(self, qkv):
-        assert qkv.shape[-1] == self.transformer_dim * 3
-        q = qkv[:, :, :self.transformer_dim]
-        k = qkv[:, :, self.transformer_dim: 2 * self.transformer_dim]
-        v = qkv[:, :, 2 * self.transformer_dim:]
-        return (q, k, v)
+    def forward(self, concatenated_input):
+        # Apply input projection and add positional encoding
+        x = self.input_projection(concatenated_input) + self.pos_embedding
+        # Pass through encoder layers
+        for layer in self.encoder:
+            x = layer(x)
+        x = self.norm(x)
 
+        # Assuming some form of encoded memory is available, would need modification for real use
+        memory = x
+        for layer in self.decoder:
+            x = layer(x, memory)
+        x = self.norm(x)
 
-
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-
-        qkvs1 = self.input_to_qkv1(inputs)
-        # shape out = [3, batchsize, transformer_dim*3]
-
-        qs1, ks1, vs1 = self.split_qkv(qkvs1)
-        # shape out = [3, batchsize, transformer_dim]
-
-        attn1_a = self.multihead_attn1(qs1, ks1, vs1, need_weights=False)
-        attn1_a = attn1_a[0]
-        # shape out = [3, batchsize, transformer_dim = trans_emb_dim x nheads]
-
-        attn1_b = self.attn1_to_fcn(attn1_a)
-        attn1_b = attn1_b / 1.414 + inputs / 1.414  # add residual
-        # shape out = [3, batchsize, trans_emb_dim]
-
-        # normalise
-        attn1_b = self.norm1a(attn1_b.transpose(0, 2).transpose(0, 1))
-        attn1_b = attn1_b.transpose(0, 1).transpose(0, 2)
-        # batchnorm likes shape = [batchsize, trans_emb_dim, 3]
-        # so have to shape like this, then return
-
-        # fully connected layer
-        attn1_c = self.attn1_fcn(attn1_b) / 1.414 + attn1_b / 1.414
-        # shape out = [3, batchsize, trans_emb_dim]
-
-        # normalise
-        # attn1_c = self.norm1b(attn1_c)
-        attn1_c = self.norm1b(attn1_c.transpose(0, 2).transpose(0, 1))
-        attn1_c = attn1_c.transpose(0, 1).transpose(0, 2)
-        return attn1_c
-
+        # Apply final projection to output
+        output = self.final_projection(x)
+        return output
 class Model_mlp_diff(nn.Module):
-    def __init__(self, observation_embedder, mi_embedder, sequence_length, net_type="transformer"):
+    def __init__(self, observation_embedder, mi_embedder, sequence_length, concat, concat2, net_type="transformer"):
         super(Model_mlp_diff, self).__init__()
         self.observation_embedder = observation_embedder
         self.mi_embedder = mi_embedder
         self.time_siren = TimeSiren(1, mi_embedder.output_dim)
         self.net_type = net_type
-
+        self.concat = concat
+        self.concat2 = concat2
         # Transformer specific initialization
         self.nheads = 16  # Number of heads in multihead attention
-        self.trans_emb_dim = 256 # Transformer embedding dimension
-        self.transformer_dim = self.trans_emb_dim * self.nheads
-
+        self.trans_emb_dim = 256# Transformer embedding dimension
+        self.projection = 128
+        self.projection2 = 256
+        self.input_dim = 128 #Merger output
         # Initialize SequenceTransformers for y and x
-        self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, 128)
+        self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, self.input_dim)
 
+        self.t_to_input = nn.Linear(mi_embedder.output_dim, self.projection)
+        self.y_to_input = nn.Linear(sequence_length, self.projection)
+        if self.concat == True :
+            self.transformer = AdvancedTransformerModel(self.projection * 3, hidden_dim=self.trans_emb_dim,
+                                                        sequence_length=sequence_length, num_encoder_layers=4,
+                                                        num_decoder_layers=4, num_heads=self.nheads)
+        # elif self.concat2 == True :
+        #     self.transformer = AdvancedTransformerModel(self.projection2, hidden_dim=self.trans_emb_dim,
+        #                                                 sequence_length=sequence_length, num_encoder_layers=4,
+        #                                                 num_decoder_layers=4, num_heads=self.nheads)
 
-        # Linear layers to project embeddings to transformer dimension
-        self.t_to_input = nn.Linear(mi_embedder.output_dim, self.trans_emb_dim)
-        self.y_to_input = nn.Linear(sequence_length, self.trans_emb_dim)
-        self.x_to_input = nn.Linear(128, self.trans_emb_dim)
-
-        # Positional embedding for transformer
-        self.pos_embed = TimeSiren(1, self.trans_emb_dim)
-
-        # Transformer blocks
-        self.transformer_block1 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
-        self.transformer_block2 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
-        self.transformer_block3 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
-        self.transformer_block4 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
-
-
-        # Final layer to project transformer output to desired output dimension
-        self.final = nn.Linear(self.trans_emb_dim * 3, sequence_length)  # Adjust the output dimension as needed
+        else:
+            self.transformer = AdvancedTransformerModel(self.input_dim + mi_embedder.output_dim + sequence_length, hidden_dim=self.trans_emb_dim,sequence_length=sequence_length,num_encoder_layers=4, num_decoder_layers=4, num_heads=self.nheads)
 
     def forward(self, y, x, z, t):
 
+        #Embedd time steps
         embedded_t = self.time_siren(t)
 
-        # CHUNK DESCRIPTOR CASE !
-        # in the case we need to process separatly observation and past action through different pipelines (not only with weighted event_embedder)
-        # observations_past_act = x[:, :-1, :]  # All elements except the last
-        # chunk_descriptor = x[:, -1, :] # the last element of x
-        # embed_chunk_descriptor = embedding_class_special_for_chunk_descriptor(chunk_descriptor) (introduce embedding_class in init of model_mlp_diff)
-        # x = self.event_embedder(observation_past_act)
-        # x = x + embed_chunk_descriptor
-
-        #comment this if chunk descriptor case
+        #Embedd observation sequence and Mi behaviors
         x = self.observation_embedder(x)
-
         z = self.mi_embedder(z)
+        x_input = self.merger(x,z)
 
-        x = self.merger(x,z)
+        if self.concat == True :
 
-        # Project embeddings to transformer dimension
-        t_input = self.t_to_input(embedded_t)
-        y_input = self.y_to_input(y)
-        x_input = self.x_to_input(x)
+            # Project before concat
+            t_input = self.t_to_input(embedded_t)
+            y_input = self.y_to_input(y)
 
+            concat = torch.cat([y_input,x_input,t_input], dim=-1)
 
-        #t_input = t_input.unsqueeze(1).repeat(1, x.shape[1], 1)
+        # elif self.concat2 == True : // embedd following the sequence length dimension (but need to embedd noisy also)
+        #     # Project before concat
+        #     t_input = self.t_to_input(embedded_t)
+        #     y_input = self.y_to_input(y)
+        #
+        #     concat = torch.cat([y_input, x_input, t_input], dim=2)
 
-        # Add positional encoding
-        t_input += self.pos_embed(torch.zeros(x.shape[0], 1).to(x.device) + 1.0)
-        y_input += self.pos_embed(torch.zeros(y.shape[0], 1).to(x.device) + 2.0)
-        x_input += self.pos_embed(torch.zeros(x.shape[0], 1).to(x.device) + 3.0)
+        else:
+            concat = torch.cat([y, x_input, embedded_t], dim=-1)
 
-        # Concatenate inputs for transformer
-        inputs = torch.cat((t_input[None, :, :], y_input[None, :, :], x_input[None, :, :]), 0)
-
-        # Pass through transformer blocks
-        block_output = self.transformer_block1(inputs)
-        block_output1 = self.transformer_block2(block_output)
-        block_output2 = self.transformer_block3(block_output1)
-        block_output3 = self.transformer_block4(block_output2)
-
-
-        # Flatten and add final linear layer
-        transformer_out = block_output3.transpose(0, 1)  # Roll batch to first dim
-
-        flat = torch.flatten(transformer_out, start_dim=1, end_dim=2)
-        out = self.final(flat)
+        out = self.transformer(concat)
         return out
