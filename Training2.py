@@ -25,7 +25,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.optim.lr_scheduler import StepLR
 from torch.optim.lr_scheduler import CyclicLR
 
-from Models import Model_mlp_diff,  Model_Cond_Diffusion, ObservationEmbedder, SpeakingTurnDescriptorEmbedder
+from Models2 import Model_mlp_diff,  Model_Cond_Diffusion, ObservationEmbedder, SpeakingTurnDescriptorEmbedder
 
 import wandb
 
