@@ -471,23 +471,26 @@ class Model_mlp_diff(nn.Module):
 
         # Transformer specific initialization
         self.nheads = 16  # Number of heads in multihead attention
-        self.trans_emb_dim = 64  # Transformer embedding dimension
+        self.trans_emb_dim = 128 # Transformer embedding dimension
         self.transformer_dim = self.trans_emb_dim * self.nheads
 
         # Initialize SequenceTransformers for y and x
-        self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, 32)
+        self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, 64)
 
 
         # Linear layers to project embeddings to transformer dimension
         self.t_to_input = nn.Linear(mi_embedder.output_dim, self.trans_emb_dim)
         self.y_to_input = nn.Linear(sequence_length, self.trans_emb_dim)
-        self.x_to_input = nn.Linear(32, self.trans_emb_dim)
+        self.x_to_input = nn.Linear(64, self.trans_emb_dim)
 
         # Positional embedding for transformer
         self.pos_embed = TimeSiren(1, self.trans_emb_dim)
 
         # Transformer blocks
         self.transformer_block1 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
+        self.transformer_block2 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
+        self.transformer_block3 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
+
 
         # Final layer to project transformer output to desired output dimension
         self.final = nn.Linear(self.trans_emb_dim * 3, sequence_length)  # Adjust the output dimension as needed
@@ -529,9 +532,12 @@ class Model_mlp_diff(nn.Module):
 
         # Pass through transformer blocks
         block_output = self.transformer_block1(inputs)
+        block_output1 = self.transformer_block2(block_output)
+        block_output2 = self.transformer_block3(block_output1)
+
 
         # Flatten and add final linear layer
-        transformer_out = block_output.transpose(0, 1)  # Roll batch to first dim
+        transformer_out = block_output2.transpose(0, 1)  # Roll batch to first dim
 
         flat = torch.flatten(transformer_out, start_dim=1, end_dim=2)
         out = self.final(flat)

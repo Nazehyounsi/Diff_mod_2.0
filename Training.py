@@ -92,13 +92,13 @@ batch_size = config.get("batch_size", 32)
 n_T = config.get("num_T", 50)
 net_type = config.get("net_type", "transformer")
 num_event_types = config.get("num_event_types", 12)
-event_embedding_dim = config.get("event_embedding_dim", 16)
+event_embedding_dim = config.get("event_embedding_dim", 32)
 #continuous_embedding_dim = config.get("continuous_embedding_dim", 3)
-embed_output_dim = config.get("embed_output_dim", 16)
+embed_output_dim = config.get("embed_output_dim", 32)
 num_facial_types = 7
-facial_embed_dim = 16
-cnn_output_dim = 128  # Output dimension after passing through CNN layers
-lstm_hidden_dim = 64
+facial_embed_dim = 32
+cnn_output_dim = 256  # Output dimension after passing through CNN layers
+lstm_hidden_dim = 128
 
 
 # start a new wandb run to track this script
