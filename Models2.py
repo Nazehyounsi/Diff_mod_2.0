@@ -441,7 +441,6 @@ class Model_mlp_diff(nn.Module):
         self.input_dim = 256 #Merger output
         # Initialize SequenceTransformers for y and x
         self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, self.input_dim)
-
         self.t_to_input = nn.Linear(mi_embedder.output_dim, self.projection)
         self.y_to_input = nn.Linear(sequence_length, self.projection)
         if self.concat == True :
