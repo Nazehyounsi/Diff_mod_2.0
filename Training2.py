@@ -317,7 +317,7 @@ def preprocess_data(data):
 # Assuming the functions 'load_data_from_folder' and 'preprocess_data' are defined as in your provided code.
 
 class MyCustomDataset(Dataset):
-    def __init__(self, folder_path, train_or_test="train", train_prop=0.90, oversample_rare_events=False):
+    def __init__(self, folder_path, train_or_test="train", indices_path=None, train_prop=0.90, oversample_rare_events=False):
 
         # Define new mappings for facial expressions and MI behaviors
         facial_expression_mapping = {0: 0, 16: 1, 26: 2, 30: 3, 21: 4, 27: 5, 31: 6}
@@ -333,15 +333,28 @@ class MyCustomDataset(Dataset):
         if oversample_rare_events:
             processed_data = oversample_sequences(processed_data, rare_event_criteria)
 
-        # Split the data into training and testing based on train_prop
-        n_train = int(len(processed_data) * train_prop)
-        if train_or_test == "train":
-            self.data = processed_data[:n_train]
-        elif train_or_test == "test":
-            print("Test data created !")
-            self.data = processed_data[n_train:]
+        # If indices_path is provided, use it to load the indices for the split
+        if indices_path and os.path.exists(indices_path):
+            with open(indices_path, 'r') as f:
+                indices = json.load(f)
+            train_indices, test_indices = indices['train'], indices['test']
         else:
-            raise ValueError("train_or_test should be either 'train' or 'test'")
+            # Otherwise, create the split and save the indices
+            shuffled_indices = np.random.permutation(len(processed_data))
+            train_indices = shuffled_indices[:int(len(processed_data) * train_prop)]
+            val_indices = shuffled_indices[int(len(processed_data) * train_prop):]
+            if not indices_path:
+                indices_path = 'data_indices.json'
+            with open(indices_path, 'w') as f:
+                json.dump({'train': train_indices.tolist(), 'test': val_indices.tolist()}, f)
+
+        # Use the indices to create the data split
+        if train_or_test == "train":
+            self.data = [processed_data[i] for i in train_indices]
+        elif train_or_test == "test":
+            self.data = [processed_data[i] for i in test_indices]
+        else:
+            raise ValueError("split should be either 'train' or 'validation'")
 
         # # Transform data into previous action integration (Tour/tour)
         # self.transformed_data = []
@@ -452,11 +465,11 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         # Update the dataset path here (dataset for local run)
         folder_path = 'C:/Users/NEZIH YOUNSI/Desktop/Hcapriori_input/Observaton_Context_Tuples'
 
-    # Use MyCustomDataset instead of ClawCustomDataset
+        # Use MyCustomDataset instead of ClawCustomDataset
     torch_data_train = MyCustomDataset(folder_path, train_or_test="train", train_prop=0.90, oversample_rare_events=True)
-    test_dataset = MyCustomDataset(folder_path, train_or_test="test", train_prop=0.90, oversample_rare_events=True)
+    test_dataset = MyCustomDataset(folder_path, train_or_test="test", train_prop=0.90, indices_path='data_indices.json', oversample_rare_events=True)
     dataload_train = DataLoader(torch_data_train, batch_size=batch_size, shuffle=True, collate_fn=MyCustomDataset.collate_fn)
-    test_dataloader = DataLoader(test_dataset, batch_size=256, shuffle=True, collate_fn=MyCustomDataset.collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, collate_fn=MyCustomDataset.collate_fn)
 
     sequence_length = torch_data_train.get_seq_len()
 
@@ -639,7 +652,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             print("la target :")
             print(y_batch[0])
             print("la prediction :")
-            print(best_predictions[0])
+            print(np.round(best_predictions[0]))
 
 
 if __name__ == "__main__":
