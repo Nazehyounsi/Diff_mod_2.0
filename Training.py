@@ -356,11 +356,10 @@ class MyCustomDataset(Dataset):
         #
         #     last_action = action[-1]  # Save the last action of the current sequence
 
-        self.processed_data = processed_data
 
         # Transform data into sequences
         self.transformed_data = []
-        for observation, action, chunk_descriptor in processed_data:
+        for observation, action, chunk_descriptor in self.data:
             # Transform both observation and action to sequences
             x, z = transform_obs_to_sequence(observation, sequence_length)
             y = transform_action_to_sequence(action, sequence_length)
@@ -621,10 +620,10 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 log_density = kde.score_samples(single_pred_samples)
                 best_idx = np.argmax(log_density)
                 best_predictions[i] = single_pred_samples[best_idx]
-                # print("la target :")
-                # print(y_batch[i])
-                # print("la prediction :")
-                # print(best_predictions[i])
+            print("la target :")
+            print(y_batch[0])
+            print("la prediction :")
+            print(best_predictions[0])
 
 
 if __name__ == "__main__":

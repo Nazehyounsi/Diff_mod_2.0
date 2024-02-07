@@ -338,6 +338,7 @@ class MyCustomDataset(Dataset):
         if train_or_test == "train":
             self.data = processed_data[:n_train]
         elif train_or_test == "test":
+            print("Test data created !")
             self.data = processed_data[n_train:]
         else:
             raise ValueError("train_or_test should be either 'train' or 'test'")
@@ -359,11 +360,10 @@ class MyCustomDataset(Dataset):
         #
         #     last_action = action[-1]  # Save the last action of the current sequence
 
-        self.processed_data = processed_data
 
         # Transform data into sequences
         self.transformed_data = []
-        for observation, action, chunk_descriptor in processed_data:
+        for observation, action, chunk_descriptor in self.data:
             # Transform both observation and action to sequences
             x, z = transform_obs_to_sequence(observation, sequence_length)
             y = transform_action_to_sequence(action, sequence_length)
@@ -456,13 +456,15 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
     torch_data_train = MyCustomDataset(folder_path, train_or_test="train", train_prop=0.90, oversample_rare_events=True)
     test_dataset = MyCustomDataset(folder_path, train_or_test="test", train_prop=0.90, oversample_rare_events=True)
     dataload_train = DataLoader(torch_data_train, batch_size=batch_size, shuffle=True, collate_fn=MyCustomDataset.collate_fn)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, collate_fn=MyCustomDataset.collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=256, shuffle=True, collate_fn=MyCustomDataset.collate_fn)
 
     sequence_length = torch_data_train.get_seq_len()
 
     # Calculate the total number of batches
     total_batches = len(dataload_train)
     print(f"Total number of batches: {total_batches}")
+    total_batches = len(test_dataloader)
+    print(f"Total number of test batches: {total_batches}")
     #total_samples = total_batches * batch_size
     #zero_sequences_count = count_zero_sequences(dataload_train)
     # print("Total of empty actions")
@@ -567,6 +569,8 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
 
         model.eval()
 
+
+
 # EVALUATION OF NOISE ESTIMATION
         noise_estimator = model.nn_model
         loss_mse = nn.MSELoss()
@@ -603,9 +607,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         extra_diffusion_steps = 0
         guide_weight_list = GUIDE_WEIGHTS if exp_name == "cfg" else [None]
         kde_samples = args.evaluation_param
-        total_batches = len(test_dataloader)
 
-        print(f"Total number of test batches: {total_batches}")
 
         for x_batch, y_batch, z_batch, _ in test_dataloader:
             x_batch = x_batch.to(device)
@@ -634,10 +636,10 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 log_density = kde.score_samples(single_pred_samples)
                 best_idx = np.argmax(log_density)
                 best_predictions[i] = single_pred_samples[best_idx]
-                # print("la target :")
-                # print(y_batch[i])
-                # print("la prediction :")
-                # print(best_predictions[i])
+            print("la target :")
+            print(y_batch[0])
+            print("la prediction :")
+            print(best_predictions[0])
 
 
 if __name__ == "__main__":
