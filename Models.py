@@ -510,6 +510,7 @@ class Model_mlp_diff(nn.Module):
 
         #comment this if chunk descriptor case
         x = self.observation_embedder(x)
+
         z = self.mi_embedder(z)
 
         x = self.merger(x,z)

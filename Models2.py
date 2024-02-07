@@ -389,7 +389,7 @@ class Merger(nn.Module):
         return x
 
 class AdvancedTransformerModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim, sequence_length, num_encoder_layers=4, num_decoder_layers=4, num_heads=8, norm_layer=nn.LayerNorm):
+    def __init__(self, input_dim, hidden_dim, sequence_length, num_encoder_layers=5, num_decoder_layers=5, num_heads=8, norm_layer=nn.LayerNorm):
         super(AdvancedTransformerModel, self).__init__()
         self.input_projection = nn.Linear(input_dim, hidden_dim)
         self.pos_embedding = nn.Parameter(torch.randn(1, hidden_dim))
@@ -435,11 +435,10 @@ class Model_mlp_diff(nn.Module):
         self.concat = concat
         self.concat2 = concat2
         # Transformer specific initialization
-        self.nheads = 16  # Number of heads in multihead attention
+        self.nheads = 8  # Number of heads in multihead attention
         self.trans_emb_dim = 256# Transformer embedding dimension
         self.projection = 128
-        self.projection2 = 256
-        self.input_dim = 128 #Merger output
+        self.input_dim = 256 #Merger output
         # Initialize SequenceTransformers for y and x
         self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, self.input_dim)
 
@@ -455,7 +454,7 @@ class Model_mlp_diff(nn.Module):
         #                                                 num_decoder_layers=4, num_heads=self.nheads)
 
         else:
-            self.transformer = AdvancedTransformerModel(self.input_dim + mi_embedder.output_dim + sequence_length, hidden_dim=self.trans_emb_dim,sequence_length=sequence_length,num_encoder_layers=4, num_decoder_layers=4, num_heads=self.nheads)
+            self.transformer = AdvancedTransformerModel(self.input_dim + mi_embedder.output_dim + sequence_length, hidden_dim=self.trans_emb_dim,sequence_length=sequence_length,num_encoder_layers=5, num_decoder_layers=5, num_heads=self.nheads)
 
     def forward(self, y, x, z, t):
 
