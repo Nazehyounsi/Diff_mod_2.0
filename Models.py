@@ -471,7 +471,7 @@ class Model_mlp_diff(nn.Module):
 
         # Transformer specific initialization
         self.nheads = 16  # Number of heads in multihead attention
-        self.trans_emb_dim = 128 # Transformer embedding dimension
+        self.trans_emb_dim = 256 #Transformer embedding dimension
         self.transformer_dim = self.trans_emb_dim * self.nheads
 
         # Initialize SequenceTransformers for y and x
