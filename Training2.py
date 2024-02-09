@@ -649,10 +649,10 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 log_density = kde.score_samples(single_pred_samples)
                 best_idx = np.argmax(log_density)
                 best_predictions[i] = single_pred_samples[best_idx]
-            print("la target :")
-            print(y_batch[0])
-            print("la prediction :")
-            print(np.round(best_predictions[0]))
+                print("la target :")
+                print(y_batch[i])
+                print("la prediction :")
+                print(np.round(best_predictions[i]))
 
 
 if __name__ == "__main__":

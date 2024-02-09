@@ -490,7 +490,7 @@ class Model_mlp_diff(nn.Module):
         self.transformer_block1 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
         self.transformer_block2 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
         self.transformer_block3 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
-        #self.transformer_block4 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
+        self.transformer_block4 = TransformerEncoderBlock(self.trans_emb_dim, self.transformer_dim, self.nheads)
 
 
         # Final layer to project transformer output to desired output dimension
@@ -535,11 +535,11 @@ class Model_mlp_diff(nn.Module):
         block_output = self.transformer_block1(inputs)
         block_output1 = self.transformer_block2(block_output)
         block_output2 = self.transformer_block3(block_output1)
-        #block_output3 = self.transformer_block4(block_output2)
+        block_output3 = self.transformer_block4(block_output2)
 
 
         # Flatten and add final linear layer
-        transformer_out = block_output2.transpose(0, 1)  # Roll batch to first dim
+        transformer_out = block_output3.transpose(0, 1)  # Roll batch to first dim
 
         flat = torch.flatten(transformer_out, start_dim=1, end_dim=2)
         out = self.final(flat)
