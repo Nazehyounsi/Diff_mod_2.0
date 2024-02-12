@@ -5,7 +5,7 @@ import pickle
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
-
+from Levenshtein import distance as levenshtein_distance
 from collections import Counter
 from sklearn.metrics import confusion_matrix
 from torch.profiler import profile, record_function, ProfilerActivity
@@ -604,6 +604,10 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         guide_weight_list = GUIDE_WEIGHTS if exp_name == "cfg" else [None]
         kde_samples = args.evaluation_param
         total_batches = len(test_dataloader)
+        # Initialize variables to calculate the overall metrics
+        total_accuracy = 0
+        total_edit_distance = 0
+        total_sequences = 0
 
         print(f"Total number of test batches: {total_batches}")
 
@@ -634,10 +638,36 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 log_density = kde.score_samples(single_pred_samples)
                 best_idx = np.argmax(log_density)
                 best_predictions[i] = single_pred_samples[best_idx]
-                print("la target :")
-                print(y_batch[i])
-                print("la prediction :")
-                print(np.round(best_predictions[i]))
+                best_predictions[i] = np.round(best_predictions[i])
+                # print("la target :")
+                # print(y_batch[i])
+                # print("la prediction :")
+                # print(np.round(best_predictions[i]))
+
+            # Convert the tensors to lists of integers for edit distance computation
+            y_pred_list = best_predictions.tolist()
+            y_target_list = y_batch.cpu().numpy().tolist()
+
+            # Compute metrics for each sequence in the batch
+            for pred, target in zip(y_pred_list, y_target_list):
+                # Frame-wise accuracy
+                correct_predictions = np.sum(np.array(pred) == np.array(target))
+                accuracy_per_sequence = correct_predictions / len(target)
+                total_accuracy += accuracy_per_sequence
+
+                # Edit distance
+                edit_distance = levenshtein_distance(pred, target)
+                total_edit_distance += edit_distance
+
+            # Update the total number of sequences processed
+            total_sequences += y_batch.shape[0]
+
+        # Compute the average metrics over all batches
+        average_accuracy = total_accuracy / total_sequences
+        average_edit_distance = total_edit_distance / total_sequences
+        print(f'Average frame-wise accuracy over the validation set: {average_accuracy:.2f}')
+        print(f'Average Levenshtein distance over the batch: {average_edit_distance:.2f}')
+
 
 
 if __name__ == "__main__":
