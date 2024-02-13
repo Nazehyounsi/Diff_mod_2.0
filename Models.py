@@ -513,20 +513,20 @@ class Model_mlp_diff(nn.Module):
         # x = x + embed_chunk_descriptor
 
         #comment this if chunk descriptor case
+        
         x = self.observation_embedder(x)
-
-        # mask out context embedding, x_e, if context_mask == 1
-        context_mask = context_mask.repeat(x.shape[1], 1).T
-        x = x * (-1 * (1 - context_mask))
 
         z = self.mi_embedder(z)
         # mask out context embedding, x_e, if context_mask == 1
-        context_mask = context_mask.repeat(z.shape[1], 1).T
-        z = z * (-1 * (1 - context_mask))
+        #context_mask = context_mask.repeat(z.shape[1], 1).T
+        #z = z * (-1 * (1 - context_mask))
 
         x = self.merger(x,z)
         
         #Mettre le mask ici sur tout le merger ou mieux de separer
+         # mask out context embedding, x_e, if context_mask == 1
+        context_mask = context_mask.repeat(x.shape[1], 1).T
+        x = x * (-1 * (1 - context_mask))
         
         # Project embeddings to transformer dimension
         t_input = self.t_to_input(embedded_t)
