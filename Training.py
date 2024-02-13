@@ -634,10 +634,8 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             all_traces = []
             for _ in range(kde_samples):  # Number of predictions to generate for KDE (Find the best number to fit KDE and best predicitons)
                 with torch.no_grad():
-                    if exp_name == "cfg":
-                         model.guide_w = guide_weight
-                    else :
-                         model.guide_w = 0
+                    
+                    model.guide_w = guide_weight
                     y_pred_= model.sample(x_batch,z_batch).detach().cpu().numpy()
                     #y_pred_, y_pred_trace_ = model.sample(x_batch, return_y_trace=True)
                     all_predictions.append(y_pred_)
