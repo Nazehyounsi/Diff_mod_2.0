@@ -592,7 +592,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
 
             with torch.no_grad():
                 # Use the model to estimate the noise
-                estimated_noise = noise_estimator(y_noised, x_batch, z_batch, t_noise.float() / model.n_T)
+                estimated_noise = noise_estimator(y_noised, x_batch, z_batch, t_noise.float() / model.n_T, context_mask)
 
             # Calculate the loss between the true noise and the estimated noise
             validation_loss = loss_mse(noise, estimated_noise)
