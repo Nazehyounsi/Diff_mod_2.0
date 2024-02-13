@@ -71,7 +71,7 @@ EXPERIMENTS = [
     {
         "exp_name": "diffusion",
         "model_type": "diffusion",
-        "drop_prob": 0.0,
+        "drop_prob": drop_prob,
     },
 ]
 
@@ -95,6 +95,9 @@ num_event_types = config.get("num_event_types", 12)
 event_embedding_dim = config.get("event_embedding_dim", 32)
 #continuous_embedding_dim = config.get("continuous_embedding_dim", 3)
 embed_output_dim = config.get("embed_output_dim", 64)
+drop_prob = config.get("drob_prob", 0.1)
+guide_w = config.get("guide_w", 3)
+
 num_facial_types = 7
 facial_embed_dim = 32
 cnn_output_dim = 512  # Output dimension after passing through CNN layers
@@ -442,7 +445,7 @@ class MyCustomDataset(Dataset):
         return x_tensors, y_tensors, z_tensors, chunk_descriptors_tensor
 
 
-def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, GUIDE_WEIGHTS):
+def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, guide_w):
     # Unpack experiment settings
     exp_name = experiment["exp_name"]
     model_type = experiment["model_type"]
@@ -510,7 +513,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             x_dim=x_dim,
             y_dim=y_dim,
             drop_prob=drop_prob,
-            guide_w=0.0,
+            guide_w = guide_w,
         )
     else:
         raise NotImplementedError
@@ -601,7 +604,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
 
 # DIRECT KDE CASE
         extra_diffusion_steps = 0
-        guide_weight_list = GUIDE_WEIGHTS if exp_name == "cfg" else [None]
+        guide_weight = guide_w
         kde_samples = args.evaluation_param
         total_batches = len(test_dataloader)
         # Initialize variables to calculate the overall metrics
@@ -630,8 +633,8 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             all_traces = []
             for _ in range(kde_samples):  # Number of predictions to generate for KDE (Find the best number to fit KDE and best predicitons)
                 with torch.no_grad():
-                    # if exp_name == "cfg":
-                    #     model.guide_w = guide_weight
+                    if exp_name == "cfg":
+                         model.guide_w = guide_weight
                     y_pred_= model.sample(x_batch,z_batch).detach().cpu().numpy()
                     #y_pred_, y_pred_trace_ = model.sample(x_batch, return_y_trace=True)
                     all_predictions.append(y_pred_)
@@ -724,4 +727,4 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
 if __name__ == "__main__":
     os.makedirs(SAVE_DATA_DIR, exist_ok=True)
     for experiment in EXPERIMENTS:
-        training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, GUIDE_WEIGHTS)
+        training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, guide_w)
