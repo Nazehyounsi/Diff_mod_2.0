@@ -145,7 +145,7 @@ class Model_Cond_Diffusion(nn.Module):
 
         # dropout context with some probability
         context_mask = torch.bernoulli(torch.zeros(x_batch.shape[0]) + self.drop_prob).to(self.device)
-        context_mask2 = torch.bernoulli(torch.zeros(z_batch.shape[0]) + self.drop_prob).to(self.device)
+        #context_mask2 = torch.bernoulli(torch.zeros(z_batch.shape[0]) + self.drop_prob).to(self.device)
 
         # randomly sample some noise, noise ~ N(0, 1)
         noise = torch.randn_like(y_batch).to(self.device)
@@ -154,7 +154,7 @@ class Model_Cond_Diffusion(nn.Module):
         # add noise to clean target actions
         y_t = self.sqrtab[_ts] * y_batch + self.sqrtmab[_ts] * noise
         # use nn model to predict noise
-        noise_pred_batch = self.nn_model(y_t, x_batch, z_batch, _ts / self.n_T, context_mask, context_mask2) #ici possible d'ajouter context_mask en input
+        noise_pred_batch = self.nn_model(y_t, x_batch, z_batch, _ts / self.n_T, context_mask) #ici possible d'ajouter context_mask en input
 
         # return mse between predicted and true noise
         return self.loss_mse(noise, noise_pred_batch)
@@ -188,11 +188,11 @@ class Model_Cond_Diffusion(nn.Module):
             # half of context will be zero
             context_mask = torch.zeros(x_batch.shape[0]).to(self.device)
             context_mask[n_sample:] = 1.0  # makes second half of batch context free
-            context_mask2 = torch.zeros(z_batch.shape[0]).to(self.device)
-            context_mask2[n_sample:] = 1.0  # makes second half of batch context free
+            #context_mask2 = torch.zeros(z_batch.shape[0]).to(self.device)
+            #context_mask2[n_sample:] = 1.0  # makes second half of batch context free
         else:
             context_mask = torch.zeros(x_batch.shape[0]).to(self.device)
-            context_mask2 = torch.zeros(z_batch.shape[0]).to(self.device)
+            #context_mask2 = torch.zeros(z_batch.shape[0]).to(self.device)
 
 
         #     #x_embed = self.nn_model.embed_context(x_batch)
@@ -216,7 +216,7 @@ class Model_Cond_Diffusion(nn.Module):
             # if extract_embedding:
             #     eps = self.nn_model(y_i, x_batch, t_is) #ici possible d'input le context_mask
 
-            eps = self.nn_model(y_i, x_batch, z_batch, t_is, context_mask, context_mask2)
+            eps = self.nn_model(y_i, x_batch, z_batch, t_is, context_mask)
             if not is_zero:
                 eps1 = eps[:n_sample]
                 eps2 = eps[n_sample:]
@@ -500,7 +500,7 @@ class Model_mlp_diff(nn.Module):
         # Final layer to project transformer output to desired output dimension
         self.final = nn.Linear(self.trans_emb_dim * 3, sequence_length)  # Adjust the output dimension as needed
 
-    def forward(self, y, x, z, t, context_mask, context_mask2):
+    def forward(self, y, x, z, t, context_mask):
 
         embedded_t = self.time_siren(t)
 
@@ -521,8 +521,8 @@ class Model_mlp_diff(nn.Module):
 
         z = self.mi_embedder(z)
         # mask out context embedding, x_e, if context_mask == 1
-        context_mask2 = context_mask2.repeat(z.shape[1], 1).T
-        z = z * (-1 * (1 - context_mask2))
+        context_mask = context_mask.repeat(z.shape[1], 1).T
+        z = z * (-1 * (1 - context_mask))
 
         x = self.merger(x,z)
         
