@@ -665,6 +665,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         # Compute the average metrics over all batches
         average_accuracy = total_accuracy / total_sequences
         average_edit_distance = total_edit_distance / total_sequences
+        average_edit_distance = average_edit_distance / y_batch.shape[1]
         print(f'Average frame-wise accuracy over the validation set: {average_accuracy:.2f}')
         print(f'Average Levenshtein distance over the batch: {average_edit_distance:.2f}')
 
