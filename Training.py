@@ -608,6 +608,15 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         total_accuracy = 0
         total_edit_distance = 0
         total_sequences = 0
+         # Initialize counters
+        correct_activations = 0
+        total_activations_ground_truth = 0
+        correct_non_activations = 0
+        total_non_activations_ground_truth = 0
+        total_rmse = 0
+        total_pcc = 0
+        average_rmse = 0
+        average_pcc = 0
 
         print(f"Total number of test batches: {total_batches}")
 
@@ -648,6 +657,20 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             y_pred_list = best_predictions.tolist()
             y_target_list = y_batch.cpu().numpy().tolist()
 
+            # Convert lists to numpy arrays for easier manipulation
+            y_pred_arr = np.array(y_pred_list)
+            y_target_arr = np.array(y_target_list)
+            
+            # RMSE
+            rmse = np.sqrt(mean_squared_error(y_target_arr, y_pred_arr))
+            total_rmse+= rmse
+            
+            
+            # Pearson Correlation Coefficient (PCC)
+            pcc = np.corrcoef(y_target_arr.flatten(), y_pred_arr.flatten())[0, 1]
+            total_pcc+= pcc
+            
+
             # Compute metrics for each sequence in the batch
             for pred, target in zip(y_pred_list, y_target_list):
                 # Frame-wise accuracy
@@ -662,12 +685,39 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             # Update the total number of sequences processed
             total_sequences += y_batch.shape[0]
 
+            # Iterate over each pair of predicted and target sequences
+            for pred, target in zip(y_pred_list, y_target_list):
+                # Convert sequences to arrays for easier element-wise comparison
+                pred_array = np.array(pred)
+                target_array = np.array(target)
+                
+                # Count activations in ground truth and correct predictions
+                is_active_pred = pred_array > 0  # Assuming AU > 0 indicates activation
+                is_active_target = target_array > 0
+                correct_activations += np.sum((pred_array == target_array) & is_active_target)
+                total_activations_ground_truth += np.sum(is_active_target)
+                
+                # Count non-activations in ground truth and correct predictions
+                correct_non_activations += np.sum((pred_array == target_array) & ~is_active_target)
+                total_non_activations_ground_truth += np.sum(~is_active_target)
+
+        average_rmse = total_rmse / total_batches
+        print(f'RMSE: {average_rmse:.4f}')
+        average_pcc = total_pcc /total_batches
+        print(f'PCC: {average_pcc:.4f}')
+        
         # Compute the average metrics over all batches
         average_accuracy = total_accuracy / total_sequences
         average_edit_distance = total_edit_distance / total_sequences
         average_edit_distance = average_edit_distance / y_batch.shape[1]
         print(f'Average frame-wise accuracy over the validation set: {average_accuracy:.2f}')
         print(f'Average Levenshtein distance over the batch: {average_edit_distance:.2f}')
+        # Calculate AHR and NHR
+        ahr = correct_activations / total_activations_ground_truth if total_activations_ground_truth > 0 else 0
+        nhr = correct_non_activations / total_non_activations_ground_truth if total_non_activations_ground_truth > 0 else 0
+        
+        print(f'AHR: {ahr:.4f}')
+        print(f'NHR: {nhr:.4f}')
 
 
 
