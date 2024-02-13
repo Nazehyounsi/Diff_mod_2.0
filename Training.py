@@ -587,7 +587,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             # Randomly sample some noise, noise ~ N(0, 1)
             noise = torch.randn_like(y_batch).to(device)
 
-            context_mask = torch.bernoulli(torch.zeros(x_batch.shape[0]) + drop_prob).to(self.device)
+            context_mask = torch.bernoulli(torch.zeros(x_batch.shape[0]) + drop_prob).to(device)
 
             # Add noise to clean target actions
             y_noised = model.sqrtab[t_noise] * y_batch + model.sqrtmab[t_noise] * noise
