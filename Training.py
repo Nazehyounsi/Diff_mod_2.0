@@ -67,13 +67,6 @@ os.environ["WANDB_MODE"] = "offline" #Server only (or wandb offline command just
 DATASET_PATH = "dataset"
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-EXPERIMENTS = [
-    {
-        "exp_name": "diffusion",
-        "model_type": "diffusion",
-        "drop_prob": drop_prob,
-    },
-]
 
 SAVE_DATA_DIR = config.get("save_data_dir", "output")
 EXTRA_DIFFUSION_STEPS = config.get("extra_diffusion_steps", [0, 2, 4, 8, 16, 32])
@@ -102,6 +95,14 @@ num_facial_types = 7
 facial_embed_dim = 32
 cnn_output_dim = 512  # Output dimension after passing through CNN layers
 lstm_hidden_dim = 256
+
+EXPERIMENTS = [
+    {
+        "exp_name": "diffusion",
+        "model_type": "diffusion",
+        "drop_prob": drop_prob,
+    },
+]
 
 
 # start a new wandb run to track this script
