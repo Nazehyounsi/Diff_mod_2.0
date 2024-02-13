@@ -587,6 +587,8 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             # Randomly sample some noise, noise ~ N(0, 1)
             noise = torch.randn_like(y_batch).to(device)
 
+            context_mask = torch.bernoulli(torch.zeros(x_batch.shape[0]) + drop_prob).to(self.device)
+
             # Add noise to clean target actions
             y_noised = model.sqrtab[t_noise] * y_batch + model.sqrtmab[t_noise] * noise
 
@@ -652,10 +654,10 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 best_idx = np.argmax(log_density)
                 best_predictions[i] = single_pred_samples[best_idx]
                 best_predictions[i] = np.round(best_predictions[i])
-                # print("la target :")
-                # print(y_batch[i])
-                # print("la prediction :")
-                # print(np.round(best_predictions[i]))
+                print("la target :")
+                print(y_batch[0])
+                print("la prediction :")
+                print(np.round(best_predictions[0]))
 
             # Convert the tensors to lists of integers for edit distance computation
             y_pred_list = best_predictions.tolist()
