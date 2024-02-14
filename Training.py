@@ -5,6 +5,8 @@ import pickle
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
+from scipy.stats import ks_2samp
+from fastdtw import fastdtw
 from Levenshtein import distance as levenshtein_distance
 from sklearn.metrics import precision_recall_fscore_support
 from collections import Counter
@@ -620,12 +622,17 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         total_activations_ground_truth = 0
         correct_non_activations = 0
         total_non_activations_ground_truth = 0
-        total_rmse = 0
-        total_pcc = 0
-        average_rmse = 0
-        average_pcc = 0
+        #total_rmse = 0
+        #total_pcc = 0
+        #average_rmse = 0
+        #average_pcc = 0
         all_preds = []
         all_targets = []
+        # Initialize lists to store KS statistic and p-value
+        ks_statistics = []
+        p_values = []
+        # Initialize list to store DTW distances
+        dtw_distances = []
 
         print(f"Total number of test batches: {total_batches}")
 
@@ -695,10 +702,19 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 edit_distance = levenshtein_distance(pred, target)
                 total_edit_distance += edit_distance
 
+                # Perform KS test
+                ks_statistic, p_value = ks_2samp(pred, target)
+                ks_statistics.append(ks_statistic)
+                p_values.append(p_value)
+
+                # Compute DTW distance
+                distance, _ = fastdtw(pred, target)
+                dtw_distances.append(distance)
+
             # Update the total number of sequences processed
             total_sequences += y_batch.shape[0]
 
-            # Iterate over each pair of predicted and target sequences
+            # Iterate over each pair of predicted and target sequences (AHR NHR)
             for pred, target in zip(y_pred_list, y_target_list):
                 # Convert sequences to arrays for easier element-wise comparison
                 pred_array = np.array(pred)
@@ -714,23 +730,33 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 correct_non_activations += np.sum((pred_array == target_array) & ~is_active_target)
                 total_non_activations_ground_truth += np.sum(~is_active_target)
 
-        # Convert the accumulated lists to numpy arrays for easier manipulation
-        all_preds_arr = np.array(all_preds)
-        all_targets_arr = np.array(all_targets)
+        # # Convert the accumulated lists to numpy arrays for easier manipulation
+        # all_preds_arr = np.array(all_preds)
+        # all_targets_arr = np.array(all_targets)
 
-        # Calculate precision, recall, and F1 score across the entire dataset
-        precision, recall, f1_score, _ = precision_recall_fscore_support(all_targets_arr, all_preds_arr, average='macro')
-        print(f"Precision: {precision:.3f}")
-        print(f"Recall: {recall:.3f}")
-        print(f"F1 Score: {f1_score:.3f}")
+        # # Calculate precision, recall, and F1 score across the entire dataset
+        # precision, recall, f1_score, _ = precision_recall_fscore_support(all_targets_arr, all_preds_arr, average='macro')
+        # print(f"Precision: {precision:.3f}")
+        # print(f"Recall: {recall:.3f}")
+        # print(f"F1 Score: {f1_score:.3f}")
+        #
+        # print(f'Average Validation Loss for Noise Estimation: {average_validation_loss}')
+        # average_rmse = total_rmse / total_batches
+        # average_rmse = average_rmse / 3
+        # print(f'RMSE: {average_rmse:.4f}')
+        # average_pcc = total_pcc /total_batches
+        # print(f'PCC: {average_pcc:.4f}')
 
-        print(f'Average Validation Loss for Noise Estimation: {average_validation_loss}')
-        average_rmse = total_rmse / total_batches
-        average_rmse = average_rmse / 3
-        print(f'RMSE: {average_rmse:.4f}')
-        average_pcc = total_pcc /total_batches
-        print(f'PCC: {average_pcc:.4f}')
-        
+        # Calculate average KS statistic and p-value
+        average_ks_statistic = np.mean(ks_statistics)
+        average_p_value = np.mean(p_values)
+        print(f'Average KS Statistic: {average_ks_statistic}')
+        print(f'Average P-value: {average_p_value}')
+
+        # Calculate average DTW distance
+        average_dtw_distance = np.mean(dtw_distances)
+        print(f'Average DTW Distance: {average_dtw_distance}')
+
         # Compute the average metrics over all batches
         average_accuracy = total_accuracy / total_sequences
         average_edit_distance = total_edit_distance / total_sequences

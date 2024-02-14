@@ -170,10 +170,8 @@ class Model_Cond_Diffusion(nn.Module):
 
         y_shape = (n_sample, x_batch.shape[1])
 
-
         # sample initial noise, y_0 ~ N(0, 1),
         y_i = torch.randn(y_shape).to(self.device)
-
 
         if not is_zero:
             if len(x_batch.shape) > 2:
