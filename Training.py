@@ -740,12 +740,14 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         # print(f"Recall: {recall:.3f}")
         # print(f"F1 Score: {f1_score:.3f}")
         #
-        # print(f'Average Validation Loss for Noise Estimation: {average_validation_loss}')
+
         # average_rmse = total_rmse / total_batches
         # average_rmse = average_rmse / 3
         # print(f'RMSE: {average_rmse:.4f}')
         # average_pcc = total_pcc /total_batches
         # print(f'PCC: {average_pcc:.4f}')
+
+        print(f'Average Validation Loss for Noise Estimation: {average_validation_loss}')
 
         # Calculate average KS statistic and p-value
         average_ks_statistic = np.mean(ks_statistics)
