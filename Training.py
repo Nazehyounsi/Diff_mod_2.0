@@ -602,7 +602,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
 
         # Compute the average validation loss
         average_validation_loss = total_validation_loss / len(test_dataloader)
-        print(f'Average Validation Loss for Noise Estimation: {average_validation_loss}')
+        
 
 
 # DIRECT KDE CASE
@@ -655,9 +655,9 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 best_predictions[i] = single_pred_samples[best_idx]
                 best_predictions[i] = np.round(best_predictions[i])
                 print("la target :")
-                print(y_batch[0])
+                print(y_batch[i])
                 print("la prediction :")
-                print(np.round(best_predictions[0]))
+                print(np.round(best_predictions[i]))
 
             # Convert the tensors to lists of integers for edit distance computation
             y_pred_list = best_predictions.tolist()
@@ -707,6 +707,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 correct_non_activations += np.sum((pred_array == target_array) & ~is_active_target)
                 total_non_activations_ground_truth += np.sum(~is_active_target)
 
+        print(f'Average Validation Loss for Noise Estimation: {average_validation_loss}')
         average_rmse = total_rmse / total_batches
         print(f'RMSE: {average_rmse:.4f}')
         average_pcc = total_pcc /total_batches
