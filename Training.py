@@ -681,14 +681,14 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             y_pred_arr = np.array(y_pred_list)
             y_target_arr = np.array(y_target_list)
             
-            # RMSE
-            rmse = np.sqrt(mean_squared_error(y_target_arr, y_pred_arr))
-            total_rmse+= rmse
-            
-            
-            # Pearson Correlation Coefficient (PCC)
-            pcc = np.corrcoef(y_target_arr.flatten(), y_pred_arr.flatten())[0, 1]
-            total_pcc+= pcc
+            # # RMSE
+            # rmse = np.sqrt(mean_squared_error(y_target_arr, y_pred_arr))
+            # total_rmse+= rmse
+            #
+            #
+            # # Pearson Correlation Coefficient (PCC)
+            # pcc = np.corrcoef(y_target_arr.flatten(), y_pred_arr.flatten())[0, 1]
+            # total_pcc+= pcc
             
 
             # Compute metrics for each sequence in the batch
