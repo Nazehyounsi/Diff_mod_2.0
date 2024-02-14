@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 from Levenshtein import distance as levenshtein_distance
+from sklearn.metrics import precision_recall_fscore_support
 from collections import Counter
 from sklearn.metrics import confusion_matrix
 from torch.profiler import profile, record_function, ProfilerActivity
@@ -67,13 +68,6 @@ os.environ["WANDB_MODE"] = "offline" #Server only (or wandb offline command just
 DATASET_PATH = "dataset"
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-EXPERIMENTS = [
-    {
-        "exp_name": "diffusion",
-        "model_type": "diffusion",
-        "drop_prob": 0.0,
-    },
-]
 
 SAVE_DATA_DIR = config.get("save_data_dir", "output")
 EXTRA_DIFFUSION_STEPS = config.get("extra_diffusion_steps", [0, 2, 4, 8, 16, 32])
@@ -95,10 +89,21 @@ num_event_types = config.get("num_event_types", 12)
 event_embedding_dim = config.get("event_embedding_dim", 32)
 #continuous_embedding_dim = config.get("continuous_embedding_dim", 3)
 embed_output_dim = config.get("embed_output_dim", 64)
+drop_prob = config.get("drob_prob", 0.1)
+guide_w = config.get("guide_w", 3)
+
 num_facial_types = 7
 facial_embed_dim = 32
 cnn_output_dim = 512  # Output dimension after passing through CNN layers
 lstm_hidden_dim = 256
+
+EXPERIMENTS = [
+    {
+        "exp_name": "diffusion",
+        "model_type": "diffusion",
+        "drop_prob": drop_prob,
+    },
+]
 
 
 # start a new wandb run to track this script
@@ -442,7 +447,7 @@ class MyCustomDataset(Dataset):
         return x_tensors, y_tensors, z_tensors, chunk_descriptors_tensor
 
 
-def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, GUIDE_WEIGHTS):
+def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, guide_w):
     # Unpack experiment settings
     exp_name = experiment["exp_name"]
     model_type = experiment["model_type"]
@@ -510,7 +515,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             x_dim=x_dim,
             y_dim=y_dim,
             drop_prob=drop_prob,
-            guide_w=0.0,
+            guide_w = guide_w,
         )
     else:
         raise NotImplementedError
@@ -583,12 +588,14 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             # Randomly sample some noise, noise ~ N(0, 1)
             noise = torch.randn_like(y_batch).to(device)
 
+            context_mask = torch.bernoulli(torch.zeros(x_batch.shape[0]) + drop_prob).to(device)
+
             # Add noise to clean target actions
             y_noised = model.sqrtab[t_noise] * y_batch + model.sqrtmab[t_noise] * noise
 
             with torch.no_grad():
                 # Use the model to estimate the noise
-                estimated_noise = noise_estimator(y_noised, x_batch, z_batch, t_noise.float() / model.n_T)
+                estimated_noise = noise_estimator(y_noised, x_batch, z_batch, t_noise.float() / model.n_T, context_mask)
 
             # Calculate the loss between the true noise and the estimated noise
             validation_loss = loss_mse(noise, estimated_noise)
@@ -596,18 +603,29 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
 
         # Compute the average validation loss
         average_validation_loss = total_validation_loss / len(test_dataloader)
-        print(f'Average Validation Loss for Noise Estimation: {average_validation_loss}')
+        
 
 
 # DIRECT KDE CASE
         extra_diffusion_steps = 0
-        guide_weight_list = GUIDE_WEIGHTS if exp_name == "cfg" else [None]
+        guide_weight = guide_w
         kde_samples = args.evaluation_param
         total_batches = len(test_dataloader)
         # Initialize variables to calculate the overall metrics
         total_accuracy = 0
         total_edit_distance = 0
         total_sequences = 0
+         # Initialize counters
+        correct_activations = 0
+        total_activations_ground_truth = 0
+        correct_non_activations = 0
+        total_non_activations_ground_truth = 0
+        total_rmse = 0
+        total_pcc = 0
+        average_rmse = 0
+        average_pcc = 0
+        all_preds = []
+        all_targets = []
 
         print(f"Total number of test batches: {total_batches}")
 
@@ -621,8 +639,8 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             all_traces = []
             for _ in range(kde_samples):  # Number of predictions to generate for KDE (Find the best number to fit KDE and best predicitons)
                 with torch.no_grad():
-                    # if exp_name == "cfg":
-                    #     model.guide_w = guide_weight
+                    
+                    model.guide_w = guide_weight
                     y_pred_= model.sample(x_batch,z_batch).detach().cpu().numpy()
                     #y_pred_, y_pred_trace_ = model.sample(x_batch, return_y_trace=True)
                     all_predictions.append(y_pred_)
@@ -639,14 +657,32 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 best_idx = np.argmax(log_density)
                 best_predictions[i] = single_pred_samples[best_idx]
                 best_predictions[i] = np.round(best_predictions[i])
-                # print("la target :")
-                # print(y_batch[i])
-                # print("la prediction :")
-                # print(np.round(best_predictions[i]))
+                print("la target :")
+                print(y_batch[i])
+                print("la prediction :")
+                print(np.round(best_predictions[i]))
 
             # Convert the tensors to lists of integers for edit distance computation
             y_pred_list = best_predictions.tolist()
             y_target_list = y_batch.cpu().numpy().tolist()
+
+            # Extend the lists across all batches for F1 computation
+            all_preds.extend(y_pred_list)
+            all_targets.extend(y_target_list)
+
+            # Convert lists to numpy arrays for easier manipulation
+            y_pred_arr = np.array(y_pred_list)
+            y_target_arr = np.array(y_target_list)
+            
+            # RMSE
+            rmse = np.sqrt(mean_squared_error(y_target_arr, y_pred_arr))
+            total_rmse+= rmse
+            
+            
+            # Pearson Correlation Coefficient (PCC)
+            pcc = np.corrcoef(y_target_arr.flatten(), y_pred_arr.flatten())[0, 1]
+            total_pcc+= pcc
+            
 
             # Compute metrics for each sequence in the batch
             for pred, target in zip(y_pred_list, y_target_list):
@@ -662,15 +698,55 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             # Update the total number of sequences processed
             total_sequences += y_batch.shape[0]
 
+            # Iterate over each pair of predicted and target sequences
+            for pred, target in zip(y_pred_list, y_target_list):
+                # Convert sequences to arrays for easier element-wise comparison
+                pred_array = np.array(pred)
+                target_array = np.array(target)
+                
+                # Count activations in ground truth and correct predictions
+                is_active_pred = pred_array > 0  # Assuming AU > 0 indicates activation
+                is_active_target = target_array > 0
+                correct_activations += np.sum((pred_array == target_array) & is_active_target)
+                total_activations_ground_truth += np.sum(is_active_target)
+                
+                # Count non-activations in ground truth and correct predictions
+                correct_non_activations += np.sum((pred_array == target_array) & ~is_active_target)
+                total_non_activations_ground_truth += np.sum(~is_active_target)
+
+        # Convert the accumulated lists to numpy arrays for easier manipulation
+        all_preds_arr = np.array(all_preds)
+        all_targets_arr = np.array(all_targets)
+
+        # Calculate precision, recall, and F1 score across the entire dataset
+        precision, recall, f1_score, _ = precision_recall_fscore_support(all_targets_arr, all_preds_arr, average='macro')
+        print(f"Precision: {precision:.3f}")
+        print(f"Recall: {recall:.3f}")
+        print(f"F1 Score: {f1_score:.3f}")
+
+        print(f'Average Validation Loss for Noise Estimation: {average_validation_loss}')
+        average_rmse = total_rmse / total_batches
+        average_rmse = average_rmse / 3
+        print(f'RMSE: {average_rmse:.4f}')
+        average_pcc = total_pcc /total_batches
+        print(f'PCC: {average_pcc:.4f}')
+        
         # Compute the average metrics over all batches
         average_accuracy = total_accuracy / total_sequences
         average_edit_distance = total_edit_distance / total_sequences
+        average_edit_distance = average_edit_distance / y_batch.shape[1]
         print(f'Average frame-wise accuracy over the validation set: {average_accuracy:.2f}')
         print(f'Average Levenshtein distance over the batch: {average_edit_distance:.2f}')
+        # Calculate AHR and NHR
+        ahr = correct_activations / total_activations_ground_truth if total_activations_ground_truth > 0 else 0
+        nhr = correct_non_activations / total_non_activations_ground_truth if total_non_activations_ground_truth > 0 else 0
+        
+        print(f'AHR: {ahr:.4f}')
+        print(f'NHR: {nhr:.4f}')
 
 
 
 if __name__ == "__main__":
     os.makedirs(SAVE_DATA_DIR, exist_ok=True)
     for experiment in EXPERIMENTS:
-        training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, GUIDE_WEIGHTS)
+        training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_type, EXTRA_DIFFUSION_STEPS, guide_w)
