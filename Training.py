@@ -226,7 +226,7 @@ def rare_event_criteria(observation, action):
     """
     # Define the rare event type for observation and action
     rare_event_types_observation = [11, 13, 4, 6, 5, 27, 31]
-    rare_event_types_action = [26, 30]  # Example rare event types for action
+    rare_event_types_action = [16, 26, 30]  # Example rare event types for action
 
     rare_observation = any(event[0] in rare_event_types_observation for event in observation)
     rare_action = any(event[0] in rare_event_types_action for event in action)
@@ -241,7 +241,7 @@ def rare_event_criteria(observation, action):
         return None
 
 
-def oversample_sequences(data, rare_event_criteria, oversampling_factor_obs=3, oversampling_factor_act=2, oversampling_factor_both=3):
+def oversample_sequences(data, rare_event_criteria, oversampling_factor_obs=3, oversampling_factor_act=3, oversampling_factor_both=3):
     """
     Oversample sequences that contain rare events, with specific factors for observation, action, and both.
     :param data: List of sequences (each sequence is a tuple of observation, action, chunk_descriptor).
