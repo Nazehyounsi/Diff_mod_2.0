@@ -226,7 +226,7 @@ def rare_event_criteria(observation, action):
     """
     # Define the rare event type for observation and action
     rare_event_types_observation = [11, 13, 4, 6, 5, 27, 31]
-    rare_event_types_action = [16, 26, 30]  # Example rare event types for action
+    rare_event_types_action = [26, 30]  # Example rare event types for action
 
     rare_observation = any(event[0] in rare_event_types_observation for event in observation)
     rare_action = any(event[0] in rare_event_types_action for event in action)
@@ -241,7 +241,7 @@ def rare_event_criteria(observation, action):
         return None
 
 
-def oversample_sequences(data, rare_event_criteria, oversampling_factor_obs=3, oversampling_factor_act=3, oversampling_factor_both=3):
+def oversample_sequences(data, rare_event_criteria, oversampling_factor_obs=3, oversampling_factor_act=2, oversampling_factor_both=3):
     """
     Oversample sequences that contain rare events, with specific factors for observation, action, and both.
     :param data: List of sequences (each sequence is a tuple of observation, action, chunk_descriptor).
@@ -672,6 +672,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             # Convert the tensors to lists of integers for edit distance computation
             y_pred_list = best_predictions.tolist()
             y_target_list = y_batch.cpu().numpy().tolist()
+            x_target_list = x_batch.cpu().numpy().tolist()
 
             # Extend the lists across all batches for F1 computation
             all_preds.extend(y_pred_list)
@@ -692,7 +693,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             
 
             # Compute metrics for each sequence in the batch
-            for pred, target in zip(y_pred_list, y_target_list):
+            for pred, target, target_obs in zip(y_pred_list, y_target_list, x_target_list):
                 # Frame-wise accuracy
                 correct_predictions = np.sum(np.array(pred) == np.array(target))
                 accuracy_per_sequence = correct_predictions / len(target)
