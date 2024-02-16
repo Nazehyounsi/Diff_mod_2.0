@@ -633,6 +633,8 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         p_values = []
         # Initialize list to store DTW distances
         dtw_distances = []
+        dtw_distances_obs_target = []
+        dtw_distances_obs_pred = []
 
         print(f"Total number of test batches: {total_batches}")
 
@@ -694,10 +696,14 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
 
             # Compute metrics for each sequence in the batch
             for pred, target, target_obs in zip(y_pred_list, y_target_list, x_target_list):
+
+                Au_mapping = {0: 0, 4: 1, 5: 2, 6: 3}
+
                 # Frame-wise accuracy
                 correct_predictions = np.sum(np.array(pred) == np.array(target))
                 accuracy_per_sequence = correct_predictions / len(target)
                 total_accuracy += accuracy_per_sequence
+
 
                 # Edit distance
                 edit_distance = levenshtein_distance(pred, target)
@@ -708,9 +714,19 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 ks_statistics.append(ks_statistic)
                 p_values.append(p_value)
 
-                # Compute DTW distance
+                target_obs = [Au_mapping.get(item, item) for item in target_obs]
+
+                # Compute DTW distance (pred_ traget)
                 distance, _ = fastdtw(pred, target)
                 dtw_distances.append(distance)
+
+                # Compute DTW distance (obs traget)
+                distance, _ = fastdtw(target_obs, target)
+                dtw_distances_obs_target.append(distance)
+
+                # Compute DTW distance (obs pred)
+                distance, _ = fastdtw(target_obs, pred)
+                dtw_distances_obs_pred.append(distance)
 
             # Update the total number of sequences processed
             total_sequences += y_batch.shape[0]
@@ -758,7 +774,15 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
 
         # Calculate average DTW distance
         average_dtw_distance = np.mean(dtw_distances)
-        print(f'Average DTW Distance: {average_dtw_distance}')
+        print(f'Average DTW Distance pred_target: {average_dtw_distance}')
+
+        # Calculate average DTW distance
+        average_dtw_distance = np.mean(dtw_distances_obs_target)
+        print(f'Average DTW Distance obs_target: {average_dtw_distance}')
+
+        # Calculate average DTW distance
+        average_dtw_distance = np.mean(dtw_distances_obs_pred)
+        print(f'Average DTW Distance obs_pred: {average_dtw_distance}')
 
         # Compute the average metrics over all batches
         average_accuracy = total_accuracy / total_sequences
