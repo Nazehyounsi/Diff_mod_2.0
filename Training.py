@@ -619,6 +619,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         total_sequences = 0
          # Initialize counters
         correct_activations = 0
+        correct_classless_activation = 0
         total_activations_ground_truth = 0
         correct_non_activations = 0
         total_non_activations_ground_truth = 0
@@ -741,6 +742,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 is_active_pred = pred_array > 0  # Assuming AU > 0 indicates activation
                 is_active_target = target_array > 0
                 correct_activations += np.sum((pred_array == target_array) & is_active_target)
+                correct_classless_activations += np.sum(is_active_pred & is_active_target)
                 total_activations_ground_truth += np.sum(is_active_target)
                 
                 # Count non-activations in ground truth and correct predictions
@@ -792,9 +794,12 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         print(f'Average Levenshtein distance over the batch: {average_edit_distance:.2f}')
         # Calculate AHR and NHR
         ahr = correct_activations / total_activations_ground_truth if total_activations_ground_truth > 0 else 0
+        achr = correct_classless_activations / total_activations_ground_truth if total_activations_ground_truth > 0 else 0
         nhr = correct_non_activations / total_non_activations_ground_truth if total_non_activations_ground_truth > 0 else 0
         
+        
         print(f'AHR: {ahr:.4f}')
+        print(f'ACHR: {achr:.4f}')
         print(f'NHR: {nhr:.4f}')
 
 
