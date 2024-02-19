@@ -667,6 +667,13 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 best_idx = np.argmax(log_density)
                 best_predictions[i] = single_pred_samples[best_idx]
                 best_predictions[i] = np.round(best_predictions[i])
+                if best_predictions[i] == 4:
+                    best_predictions[i] = 3
+                elif best_predictions[i] < 0:
+                    best_predictions[i] = 0
+                else :
+                    best_predictions[i] = best_predictions[i]
+                
                 print("la target :")
                 print(y_batch[i])
                 print("la prediction :")
