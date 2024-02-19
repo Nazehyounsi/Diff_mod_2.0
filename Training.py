@@ -619,7 +619,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         total_sequences = 0
          # Initialize counters
         correct_activations = 0
-        correct_classless_activation = 0
+        correct_classless_activations = 0
         total_activations_ground_truth = 0
         correct_non_activations = 0
         total_non_activations_ground_truth = 0
