@@ -620,6 +620,12 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
          # Initialize counters
         correct_activations = 0
         correct_classless_activations = 0
+        correct_activations_for_class_1 = 0
+        correct_activations_for_class_2 = 0
+        correct_activations_for_class_3 = 0
+        total_activations_ground_truth_1 =0
+        total_activations_ground_truth_2 = 0
+        total_activations_ground_truth_3 = 0
         total_activations_ground_truth = 0
         correct_non_activations = 0
         total_non_activations_ground_truth = 0
@@ -745,9 +751,23 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 # Count activations in ground truth and correct predictions
                 is_active_pred = pred_array > 0  # Assuming AU > 0 indicates activation
                 is_active_target = target_array > 0
+                is_active_1 = target_array == 1
+                is_active_2 = target_array == 2
+                is_active_3 = target_array == 3
+
                 correct_activations += np.sum((pred_array == target_array) & is_active_target)
                 correct_classless_activations += np.sum(is_active_pred & is_active_target)
+                # Correct activations specifically for class 1
+                correct_activations_for_class_1 += np.sum((pred_array == target_array) & (target_array == 1))
+                # Correct activations specifically for class 2
+                correct_activations_for_class_2 += np.sum((pred_array == target_array) & (target_array == 2))
+                # Correct activations specifically for class 3
+                correct_activations_for_class_3 += np.sum((pred_array == target_array) & (target_array == 3))
+
                 total_activations_ground_truth += np.sum(is_active_target)
+                total_activations_ground_truth_1 += np.sum(is_active_1)
+                total_activations_ground_truth_2 += np.sum(is_active_2)
+                total_activations_ground_truth_3 += np.sum(is_active_3)
                 
                 # Count non-activations in ground truth and correct predictions
                 correct_non_activations += np.sum((pred_array == target_array) & ~is_active_target)
@@ -800,11 +820,18 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         ahr = correct_activations / total_activations_ground_truth if total_activations_ground_truth > 0 else 0
         achr = correct_classless_activations / total_activations_ground_truth if total_activations_ground_truth > 0 else 0
         nhr = correct_non_activations / total_non_activations_ground_truth if total_non_activations_ground_truth > 0 else 0
+        ahr_mouthup = correct_activations_for_class_1 / total_activations_ground_truth_1 if total_activations_ground_truth_1 > 0 else 0
+        ahr_nosewrinkle = correct_activations_for_class_2 / total_activations_ground_truth_2 if total_activations_ground_truth_2 > 0 else 0
+        ahr_mouthdown = correct_activations_for_class_3 / total_activations_ground_truth_3 if total_activations_ground_truth_3 > 0 else 0
         
         
         print(f'AHR: {ahr:.4f}')
         print(f'ACHR: {achr:.4f}')
         print(f'NHR: {nhr:.4f}')
+        print(f'AHR MOUTH UP: {ahr_mouthup:.4f}')
+        print(f'AHR MOUTH DOWN: {ahr_mouthdown:.4f}')
+        print(f'AHR NOSE WRINKLE: {ahr_nosewrinkle:.4f}')
+
 
 
 
