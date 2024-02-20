@@ -679,6 +679,10 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 
                 print("la target :")
                 print(y_batch[i])
+                print("la sequence obs :")
+                print(x_batch[i])
+                print("le Mi behaviors :")
+                print(z_batch[i])
                 print("la prediction :")
                 print(np.round(best_predictions[i]))
 
