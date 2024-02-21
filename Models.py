@@ -23,22 +23,23 @@ class SpeakingTurnDescriptorEmbedder(nn.Module):
         # Embedding layer for each category in the descriptor
         self.embedding = nn.Embedding(num_event_types, embedding_dim)
         self.output_dim = output_dim
+        # Increase the model's capacity with more layers and non-linearities
+        self.fc1 = nn.Linear(embedding_dim * 2, embedding_dim * 4)  # Increase intermediate size
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(embedding_dim * 4, self.output_dim)
 
-        # Linear layer to process concatenated embeddings
-        self.fc = nn.Linear(embedding_dim * 2, self.output_dim)  # *2 because we concatenate two embeddings
+        # Optionally, add dropout for regularization
+        self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
-        # Assuming x is of shape [batch_size, 2], where each row is a descriptor (int1, int2)
-        elem1 = x[:, 0].long()
-        elem2 = x[:, 1].long()
-        embed_1 = self.embedding(elem1)
-        embed_2 = self.embedding(elem2)
-
-        # Concatenate the embeddings
+        elem1, elem2 = x[:, 0].long(), x[:, 1].long()
+        embed_1, embed_2 = self.embedding(elem1), self.embedding(elem2)
         concatenated = torch.cat((embed_1, embed_2), dim=1)
 
-        # Process the concatenated vector through a linear layer
-        output = self.fc(concatenated)
+        # Apply additional layers with non-linear activation functions
+        x = self.relu(self.fc1(concatenated))
+        x = self.dropout(x)  # Apply dropout
+        output = self.fc2(x)
 
         return output
 
@@ -373,9 +374,10 @@ class FCBlock(nn.Module):
 
 
 class Merger(nn.Module):
-    def __init__(self, observation_dim, speaking_turn_dim, output_dim):
+    def __init__(self, observation_dim, speaking_turn_dim, output_dim, num_heads = 8):
         super(Merger, self).__init__()
         self.input_dim = observation_dim + speaking_turn_dim
+        self.multihead_attn = nn.MultiheadAttention(embed_dim=self.input_dim, num_heads=num_heads, batch_first=True)
         intermediate_dim = (self.input_dim + output_dim) // 2  # Example intermediate size
 
         self.fc1 = nn.Linear(self.input_dim, intermediate_dim)
@@ -387,16 +389,19 @@ class Merger(nn.Module):
         self.norm2 = nn.LayerNorm(output_dim)
 
     def forward(self, observation_embedding, speaking_turn_embedding):
-        combined = torch.cat((observation_embedding, speaking_turn_embedding), dim=1)
+        combined = torch.cat((observation_embedding, speaking_turn_embedding), dim=1).unsqueeze(1)
+
+        # Apply multihead attention
+        attn_output, _ = self.multihead_attn(combined, combined, combined)
 
         # First layer
-        x = self.fc1(combined)
+        x = self.fc1(attn_output.squeeze(1))
         x = self.relu(x)
         x = self.norm1(x)
 
         # Second layer with residual connection
         x = self.fc2(x)
-        residual = self.residual_connection(combined)
+        residual = self.residual_connection(attn_output.squeeze(1))
         x += residual  # Add residual
         x = self.relu(x)
         x = self.norm2(x)
