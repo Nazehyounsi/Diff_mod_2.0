@@ -488,7 +488,14 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
     # print(total_samples)
 
 
-    observation_embedder = ObservationEmbedder(num_facial_types, facial_embed_dim, cnn_output_dim, lstm_hidden_dim, sequence_length)
+    #OPTION 1
+    #observation_embedder = ObservationEmbedder(num_facial_types, facial_embed_dim, cnn_output_dim, lstm_hidden_dim, sequence_length)
+    #OPTION 2
+    observation_embedder = ObservationEmbedder(num_facial_types, facial_embed_dim, lstm_hidden_dim, sequence_length)
+    #OPTION3
+    #observation_embedder = ObservationEmbedder(num_facial_types, facial_embed_dim, num_heads = 8, num_layers=2, sequence_length = 137)
+
+
     mi_embedder = SpeakingTurnDescriptorEmbedder(num_event_types, event_embedding_dim, embed_output_dim)
    # Determine the shape of input and output tensors
     sample_observation, sample_action, sample_z, _ = torch_data_train[0]

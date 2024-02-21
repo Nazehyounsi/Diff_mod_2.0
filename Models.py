@@ -2,6 +2,22 @@ import torch
 import torch.nn as nn
 import numpy as np
 import math
+import torch.nn.functional as F
+
+
+class SequenceReducer(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(SequenceReducer, self).__init__()
+        self.conv = nn.Conv1d(in_channels=input_dim, out_channels=output_dim, kernel_size=3, padding=1)
+        self.pool = nn.AdaptiveMaxPool1d(1)
+
+    def forward(self, x):
+        # x shape: [batch_size, seq_length, input_dim]
+        x = x.permute(0, 2, 1)  # Change to [batch_size, input_dim, seq_length] for CNN
+        x = F.relu(self.conv(x))
+        x = self.pool(x)  # Global pooling
+        x = x.view(x.size(0), -1)  # Flatten to [batch_size, output_dim]
+        return x
 
 
 class TimeSiren(nn.Module):
@@ -40,51 +56,94 @@ class SpeakingTurnDescriptorEmbedder(nn.Module):
         x = self.relu(self.fc1(concatenated))
         x = self.dropout(x)  # Apply dropout
         output = self.fc2(x)
-
         return output
 
+#Option 3 :
+# class ObservationEmbedder(nn.Module):
+#     def __init__(self, num_facial_types, embedding_dim, num_heads = 8, num_layers=2, sequence_length = 137):
+#         super(ObservationEmbedder, self).__init__()
+#         self.embedding = nn.Embedding(num_facial_types, embedding_dim)
+#         encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=num_heads)
+#         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+#         self.positional_encoding = nn.Parameter(torch.randn(1, sequence_length, embedding_dim))
+#         self.output_dim =  256
+          #self.projection = nn.Linear(embedding_dim, self.output_dim)
+#
+#     def forward(self, x):
+#         x = self.embedding(x)
+          #pos_encoding = self.positional_encoding[:, :x.size(1), :]  # Adjust to match the sequence length
+          #x = x + pos_encoding
+#         x = x.permute(1, 0, 2)  # Adjust for PyTorch's expected input format (seq_length, batch_size, embedding_dim)
+#         x = self.transformer_encoder(x)
+#         x = x.permute(1, 0, 2)  # Revert to (batch_size, seq_length, embedding_dim) for output
+          #x = self.projection(x)  # Project transformer output to 256 dimensions
+#         return x
+
+#OPTION 2
 class ObservationEmbedder(nn.Module):
-    def __init__(self, num_facial_types, facial_embedding_dim, cnn_output_dim, lstm_hidden_dim, sequence_length):
+    def __init__(self, num_facial_types, facial_embedding_dim, lstm_hidden_dim, sequence_length):
         super(ObservationEmbedder, self).__init__()
         self.embedding = nn.Embedding(num_facial_types, facial_embedding_dim)
 
-        # Define CNN layers
-        self.conv1 = nn.Conv1d(in_channels=facial_embedding_dim, out_channels=64, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv1d(in_channels=64, out_channels=cnn_output_dim, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
+        # Define LSTM layer
+        self.lstm = nn.LSTM(input_size=facial_embedding_dim, hidden_size=lstm_hidden_dim, batch_first=True)
+
+        self.sequence_length = sequence_length
         self.output_dim = lstm_hidden_dim
 
-        # Calculate the dimensionality after CNN and pooling layers
-        cnn_flattened_dim = cnn_output_dim * (sequence_length // 2 // 2)
-
-        # Define LSTM layer
-        self.lstm = nn.LSTM(input_size=cnn_flattened_dim, hidden_size=lstm_hidden_dim, batch_first=True)
-
-        # Optional: Additional layer(s) can be added here to further process LSTM output if needed
-
     def forward(self, x):
-
-        x = x.long()
-        # Embedding layer
-        x = self.embedding(x)  # Expecting x to be [batch_size, sequence_length]
-        x = x.permute(0, 2, 1)  # Change to [batch_size, embedding_dim, sequence_length] for CNN
-
-        # CNN layers
-        x = torch.relu(self.conv1(x))
-        x = self.pool(x)
-        x = torch.relu(self.conv2(x))
-        x = self.pool(x)
-
-        # Flatten output for LSTM
-        x = x.view(x.size(0), 1, -1)  # Flatten CNN output
+        x = x.long()  # Ensure input is long type for embedding
+        x = self.embedding(x)  # [batch_size, sequence_length, facial_embedding_dim]
 
         # LSTM layer
-        lstm_out, (hidden, cell) = self.lstm(x)
+        lstm_out, (hidden, cell) = self.lstm(x)  # lstm_out: [batch_size, sequence_length, lstm_hidden_dim]
 
-        # Here you can use hidden or lstm_out depending on your need
-        # For simplicity, we'll consider 'hidden' as the final feature representation
+        return lstm_out  # Return the full sequence output
 
-        return hidden[-1]  # Returning the last hidden state of LSTM
+
+#OPTION 1
+# class ObservationEmbedder(nn.Module):
+#     def __init__(self, num_facial_types, facial_embedding_dim, cnn_output_dim, lstm_hidden_dim, sequence_length):
+#         super(ObservationEmbedder, self).__init__()
+#         self.embedding = nn.Embedding(num_facial_types, facial_embedding_dim)
+#
+#         # Define CNN layers
+#         self.conv1 = nn.Conv1d(in_channels=facial_embedding_dim, out_channels=64, kernel_size=3, padding=1)
+#         self.conv2 = nn.Conv1d(in_channels=64, out_channels=cnn_output_dim, kernel_size=3, padding=1)
+#         self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
+#         self.output_dim = lstm_hidden_dim
+#
+#         # Calculate the dimensionality after CNN and pooling layers
+#         cnn_flattened_dim = cnn_output_dim * (sequence_length // 2 // 2)
+#
+#         # Define LSTM layer
+#         self.lstm = nn.LSTM(input_size=cnn_flattened_dim, hidden_size=lstm_hidden_dim, batch_first=True)
+#
+#         # Optional: Additional layer(s) can be added here to further process LSTM output if needed
+#
+#     def forward(self, x):
+#
+#         x = x.long()
+#         # Embedding layer
+#         x = self.embedding(x)  # Expecting x to be [batch_size, sequence_length]
+#         x = x.permute(0, 2, 1)  # Change to [batch_size, embedding_dim, sequence_length] for CNN
+#
+#         # CNN layers
+#         x = torch.relu(self.conv1(x))
+#         x = self.pool(x)
+#         x = torch.relu(self.conv2(x))
+#         x = self.pool(x)
+#
+#         # Flatten output for LSTM
+#         x = x.view(x.size(0), 1, -1)  # Flatten CNN output
+#
+#         # LSTM layer
+#         lstm_out, (hidden, cell) = self.lstm(x)
+#
+#         # Here you can use hidden or lstm_out depending on your need
+#         # For simplicity, we'll consider 'hidden' as the final feature representation
+#
+#         return hidden[-1] # Returning the last hidden state of LSTM
 
 
 def ddpm_schedules(beta1, beta2, T, is_linear=True):
@@ -389,19 +448,32 @@ class Merger(nn.Module):
         self.norm2 = nn.LayerNorm(output_dim)
 
     def forward(self, observation_embedding, speaking_turn_embedding):
-        combined = torch.cat((observation_embedding, speaking_turn_embedding), dim=1).unsqueeze(1)
+
+        #OPTION 2
+        speaking_turn_embedding_extended = speaking_turn_embedding.unsqueeze(1).repeat(1, observation_embedding.size(1), 1)
+        # Concatenate along the feature dimension
+        combined = torch.cat((observation_embedding, speaking_turn_embedding_extended), dim=2)
+
+        #OPTION 1
+        #combined = torch.cat((observation_embedding, speaking_turn_embedding), dim=1).unsqueeze(1)
+
 
         # Apply multihead attention
         attn_output, _ = self.multihead_attn(combined, combined, combined)
 
-        # First layer
-        x = self.fc1(attn_output.squeeze(1))
+        #OPTION1
+        #x = self.fc1(attn_output.squeeze(1))
+        # OPTION2
+        x = self.fc1(attn_output)
         x = self.relu(x)
         x = self.norm1(x)
-
         # Second layer with residual connection
         x = self.fc2(x)
-        residual = self.residual_connection(attn_output.squeeze(1))
+        # OPTION1
+        #residual = self.residual_connection(attn_output.squeeze(1))
+        # OPTION2
+        residual = self.residual_connection(attn_output)
+
         x += residual  # Add residual
         x = self.relu(x)
         x = self.norm2(x)
@@ -483,6 +555,8 @@ class Model_mlp_diff(nn.Module):
 
         # Initialize SequenceTransformers for y and x
         self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, 128)
+        #OPTION2
+        self.reducer = SequenceReducer(128, 128)
 
 
         # Linear layers to project embeddings to transformer dimension
@@ -525,6 +599,10 @@ class Model_mlp_diff(nn.Module):
         #z = z * (-1 * (1 - context_mask))
 
         x = self.merger(x,z)
+        #Option2
+        x = self.reducer(x)
+
+
         
         #Mettre le mask ici sur tout le merger ou mieux de separer
          # mask out context embedding, x_e, if context_mask == 1
