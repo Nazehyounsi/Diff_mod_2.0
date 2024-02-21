@@ -59,24 +59,24 @@ class SpeakingTurnDescriptorEmbedder(nn.Module):
         return output
 
 #Option 3 :
-# class ObservationEmbedder(nn.Module):
-#     def __init__(self, num_facial_types, embedding_dim, num_heads = 8, num_layers=2, sequence_length = 137):
-#         super(ObservationEmbedder, self).__init__()
+# class TransformerObservationEmbedder(nn.Module):
+#     def __init__(self, num_facial_types, embedding_dim, num_heads, num_layers, sequence_length, transformer_input_dim):
+#         super(TransformerObservationEmbedder, self).__init__()
 #         self.embedding = nn.Embedding(num_facial_types, embedding_dim)
-#         encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=num_heads)
+#         self.output_dim = transformer_input_dim
+#         # Projection to match Transformer's expected input dimension
+#         self.projection = nn.Linear(embedding_dim, transformer_input_dim)
+#         encoder_layer = nn.TransformerEncoderLayer(d_model=transformer_input_dim, nhead=num_heads)
 #         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-#         self.positional_encoding = nn.Parameter(torch.randn(1, sequence_length, embedding_dim))
-#         self.output_dim =  256
-          #self.projection = nn.Linear(embedding_dim, self.output_dim)
+#         self.positional_encoding = nn.Parameter(torch.randn(1, sequence_length, transformer_input_dim))
 #
 #     def forward(self, x):
-#         x = self.embedding(x)
-          #pos_encoding = self.positional_encoding[:, :x.size(1), :]  # Adjust to match the sequence length
-          #x = x + pos_encoding
-#         x = x.permute(1, 0, 2)  # Adjust for PyTorch's expected input format (seq_length, batch_size, embedding_dim)
+#         x = self.embedding(x)  # [batch_size, seq_length, embedding_dim]
+#         x = self.projection(x)  # Project to transformer_input_dim
+#         x = x + self.positional_encoding[:x.size(0), :x.size(1), :]
+#         x = x.permute(1, 0, 2)  # PyTorch expects [seq_length, batch_size, embedding_dim] for Transformer
 #         x = self.transformer_encoder(x)
-#         x = x.permute(1, 0, 2)  # Revert to (batch_size, seq_length, embedding_dim) for output
-          #x = self.projection(x)  # Project transformer output to 256 dimensions
+#         x = x.permute(1, 0, 2)  # Return to [batch_size, seq_length, transformer_input_dim] for consistency
 #         return x
 
 #OPTION 2
