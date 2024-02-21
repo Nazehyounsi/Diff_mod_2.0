@@ -173,7 +173,7 @@ def transform_obs_to_sequence(events, sequence_length):
     mi_behaviors = []  # To store MI behaviors
     for event in events:
         event_type, start_time, duration = event
-        if event_type not in facial_expression_events:
+        if event_type not in facial_expression_events and event_type == round(event_type):
             mi_behaviors.append(event_type)
         else:
             start_sample = int(start_time * sequence_length)
@@ -679,6 +679,10 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 
                 print("la target :")
                 print(y_batch[i])
+                print("la sequence obs :")
+                print(x_batch[i])
+                print("le Mi behaviors :")
+                print(z_batch[i])
                 print("la prediction :")
                 print(np.round(best_predictions[i]))
 
