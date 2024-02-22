@@ -5,19 +5,19 @@ import math
 import torch.nn.functional as F
 
 
-class SequenceReducer(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(SequenceReducer, self).__init__()
-        self.conv = nn.Conv1d(in_channels=input_dim, out_channels=output_dim, kernel_size=3, padding=1)
-        self.pool = nn.AdaptiveMaxPool1d(1)
+#class SequenceReducer(nn.Module):
+    #def __init__(self, input_dim, output_dim):
+        #super(SequenceReducer, self).__init__()
+        #self.conv = nn.Conv1d(in_channels=input_dim, out_channels=output_dim, kernel_size=3, padding=1)
+        #self.pool = nn.AdaptiveMaxPool1d(1)
 
-    def forward(self, x):
+    #def forward(self, x):
         # x shape: [batch_size, seq_length, input_dim]
-        x = x.permute(0, 2, 1)  # Change to [batch_size, input_dim, seq_length] for CNN
-        x = F.relu(self.conv(x))
-        x = self.pool(x)  # Global pooling
-        x = x.view(x.size(0), -1)  # Flatten to [batch_size, output_dim]
-        return x
+        #x = x.permute(0, 2, 1)  # Change to [batch_size, input_dim, seq_length] for CNN
+        #x = F.relu(self.conv(x))
+        #x = self.pool(x)  # Global pooling
+        #x = x.view(x.size(0), -1)  # Flatten to [batch_size, output_dim]
+        #return x
 
 
 class TimeSiren(nn.Module):
@@ -80,70 +80,70 @@ class SpeakingTurnDescriptorEmbedder(nn.Module):
 #         return x
 
 #OPTION 2
-class ObservationEmbedder(nn.Module):
-    def __init__(self, num_facial_types, facial_embedding_dim, lstm_hidden_dim, sequence_length):
-        super(ObservationEmbedder, self).__init__()
-        self.embedding = nn.Embedding(num_facial_types, facial_embedding_dim)
+#class ObservationEmbedder(nn.Module):
+    #def __init__(self, num_facial_types, facial_embedding_dim, lstm_hidden_dim, sequence_length):
+        #super(ObservationEmbedder, self).__init__()
+        #self.embedding = nn.Embedding(num_facial_types, facial_embedding_dim)
 
         # Define LSTM layer
-        self.lstm = nn.LSTM(input_size=facial_embedding_dim, hidden_size=lstm_hidden_dim, batch_first=True)
+        #self.lstm = nn.LSTM(input_size=facial_embedding_dim, hidden_size=lstm_hidden_dim, batch_first=True)
 
-        self.sequence_length = sequence_length
-        self.output_dim = lstm_hidden_dim
+        #self.sequence_length = sequence_length
+        #self.output_dim = lstm_hidden_dim
 
-    def forward(self, x):
-        x = x.long()  # Ensure input is long type for embedding
-        x = self.embedding(x)  # [batch_size, sequence_length, facial_embedding_dim]
+    #def forward(self, x):
+        #x = x.long()  # Ensure input is long type for embedding
+        #x = self.embedding(x)  # [batch_size, sequence_length, facial_embedding_dim]
 
         # LSTM layer
-        lstm_out, (hidden, cell) = self.lstm(x)  # lstm_out: [batch_size, sequence_length, lstm_hidden_dim]
+        #lstm_out, (hidden, cell) = self.lstm(x)  # lstm_out: [batch_size, sequence_length, lstm_hidden_dim]
 
-        return lstm_out  # Return the full sequence output
+        #return lstm_out  # Return the full sequence output
 
 
 #OPTION 1
-# class ObservationEmbedder(nn.Module):
-#     def __init__(self, num_facial_types, facial_embedding_dim, cnn_output_dim, lstm_hidden_dim, sequence_length):
-#         super(ObservationEmbedder, self).__init__()
-#         self.embedding = nn.Embedding(num_facial_types, facial_embedding_dim)
-#
-#         # Define CNN layers
-#         self.conv1 = nn.Conv1d(in_channels=facial_embedding_dim, out_channels=64, kernel_size=3, padding=1)
-#         self.conv2 = nn.Conv1d(in_channels=64, out_channels=cnn_output_dim, kernel_size=3, padding=1)
-#         self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
-#         self.output_dim = lstm_hidden_dim
-#
-#         # Calculate the dimensionality after CNN and pooling layers
-#         cnn_flattened_dim = cnn_output_dim * (sequence_length // 2 // 2)
-#
-#         # Define LSTM layer
-#         self.lstm = nn.LSTM(input_size=cnn_flattened_dim, hidden_size=lstm_hidden_dim, batch_first=True)
-#
-#         # Optional: Additional layer(s) can be added here to further process LSTM output if needed
-#
-#     def forward(self, x):
-#
-#         x = x.long()
-#         # Embedding layer
-#         x = self.embedding(x)  # Expecting x to be [batch_size, sequence_length]
-#         x = x.permute(0, 2, 1)  # Change to [batch_size, embedding_dim, sequence_length] for CNN
-#
-#         # CNN layers
-#         x = torch.relu(self.conv1(x))
-#         x = self.pool(x)
-#         x = torch.relu(self.conv2(x))
-#         x = self.pool(x)
-#
-#         # Flatten output for LSTM
-#         x = x.view(x.size(0), 1, -1)  # Flatten CNN output
-#
-#         # LSTM layer
-#         lstm_out, (hidden, cell) = self.lstm(x)
-#
-#         # Here you can use hidden or lstm_out depending on your need
-#         # For simplicity, we'll consider 'hidden' as the final feature representation
-#
-#         return hidden[-1] # Returning the last hidden state of LSTM
+class ObservationEmbedder(nn.Module):
+     def __init__(self, num_facial_types, facial_embedding_dim, cnn_output_dim, lstm_hidden_dim, sequence_length):
+         super(ObservationEmbedder, self).__init__()
+         self.embedding = nn.Embedding(num_facial_types, facial_embedding_dim)
+
+         # Define CNN layers
+         self.conv1 = nn.Conv1d(in_channels=facial_embedding_dim, out_channels=64, kernel_size=3, padding=1)
+         self.conv2 = nn.Conv1d(in_channels=64, out_channels=cnn_output_dim, kernel_size=3, padding=1)
+         self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
+         self.output_dim = lstm_hidden_dim
+
+         # Calculate the dimensionality after CNN and pooling layers
+         cnn_flattened_dim = cnn_output_dim * (sequence_length // 2 // 2)
+
+         # Define LSTM layer
+         self.lstm = nn.LSTM(input_size=cnn_flattened_dim, hidden_size=lstm_hidden_dim, batch_first=True)
+
+         # Optional: Additional layer(s) can be added here to further process LSTM output if needed
+
+     def forward(self, x):
+
+         x = x.long()
+         # Embedding layer
+         x = self.embedding(x)  # Expecting x to be [batch_size, sequence_length]
+         x = x.permute(0, 2, 1)  # Change to [batch_size, embedding_dim, sequence_length] for CNN
+
+         # CNN layers
+         x = torch.relu(self.conv1(x))
+         x = self.pool(x)
+         x = torch.relu(self.conv2(x))
+         x = self.pool(x)
+
+         # Flatten output for LSTM
+         x = x.view(x.size(0), 1, -1)  # Flatten CNN output
+
+         # LSTM layer
+         lstm_out, (hidden, cell) = self.lstm(x)
+
+         # Here you can use hidden or lstm_out depending on your need
+         # For simplicity, we'll consider 'hidden' as the final feature representation
+
+         return hidden[-1] # Returning the last hidden state of LSTM
 
 
 def ddpm_schedules(beta1, beta2, T, is_linear=True):
