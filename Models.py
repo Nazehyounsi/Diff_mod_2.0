@@ -450,29 +450,29 @@ class Merger(nn.Module):
     def forward(self, observation_embedding, speaking_turn_embedding):
 
         #OPTION 2
-        speaking_turn_embedding_extended = speaking_turn_embedding.unsqueeze(1).repeat(1, observation_embedding.size(1), 1)
+        #speaking_turn_embedding_extended = speaking_turn_embedding.unsqueeze(1).repeat(1, observation_embedding.size(1), 1)
         # Concatenate along the feature dimension
-        combined = torch.cat((observation_embedding, speaking_turn_embedding_extended), dim=2)
+        #combined = torch.cat((observation_embedding, speaking_turn_embedding_extended), dim=2)
 
         #OPTION 1
-        #combined = torch.cat((observation_embedding, speaking_turn_embedding), dim=1).unsqueeze(1)
+        combined = torch.cat((observation_embedding, speaking_turn_embedding), dim=1).unsqueeze(1)
 
 
         # Apply multihead attention
         attn_output, _ = self.multihead_attn(combined, combined, combined)
 
         #OPTION1
-        #x = self.fc1(attn_output.squeeze(1))
+        x = self.fc1(attn_output.squeeze(1))
         # OPTION2
-        x = self.fc1(attn_output)
+        #x = self.fc1(attn_output)
         x = self.relu(x)
         x = self.norm1(x)
         # Second layer with residual connection
         x = self.fc2(x)
         # OPTION1
-        #residual = self.residual_connection(attn_output.squeeze(1))
+        residual = self.residual_connection(attn_output.squeeze(1))
         # OPTION2
-        residual = self.residual_connection(attn_output)
+        #residual = self.residual_connection(attn_output)
 
         x += residual  # Add residual
         x = self.relu(x)
@@ -556,7 +556,7 @@ class Model_mlp_diff(nn.Module):
         # Initialize SequenceTransformers for y and x
         self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, 128)
         #OPTION2
-        self.reducer = SequenceReducer(128, 128)
+        #self.reducer = SequenceReducer(128, 128)
 
 
         # Linear layers to project embeddings to transformer dimension
@@ -600,7 +600,7 @@ class Model_mlp_diff(nn.Module):
 
         x = self.merger(x,z)
         #Option2
-        x = self.reducer(x)
+        #x = self.reducer(x)
 
 
         
