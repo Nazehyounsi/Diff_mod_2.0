@@ -122,6 +122,35 @@ wandb.init(
     }
 )
 
+
+def evaluate_expression_match(y_pred, y_target, mi_behaviors, sequence_length, expression, mi_act):
+    """
+    Evaluate the amount of a specific facial expression in the target and predicted sequences
+    when the MI behavior vector contains a specific dialogue act, and compare the match counts.
+
+    Args:
+    - y_pred: Predicted sequences (batch_size, seq_length)
+    - y_target: Target sequences (batch_size, seq_length)
+    - mi_behaviors: MI behavior vectors for each sequence in the batch (batch_size, mi_vector_length)
+    - sequence_length: The length of each sequence
+    - expression: The facial expression to count (default is 1)
+    - mi_act: The MI dialogue act to filter by (default is 5)
+    """
+    total_expression_target = 0
+    total_expression_pred = 0
+    total_frames_filtered = 0
+
+    for pred_seq, target_seq, mi_vector in zip(y_pred, y_target, mi_behaviors):
+        if mi_act in mi_vector:
+            total_frames_filtered += sequence_length
+            pred_count = np.sum(np.array(pred_seq) == expression)
+            target_count = np.sum(np.array(target_seq) == expression)
+            total_expression_pred += pred_count
+            total_expression_target += target_count
+
+    return total_expression_target, total_expression_pred, total_frames_filtered
+
+
 def count_zero_sequences(dataloader):
     count = 0
     for x_batch, y_batch, _, _ in dataloader:
@@ -639,10 +668,10 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         total_activations_ground_truth = 0
         correct_non_activations = 0
         total_non_activations_ground_truth = 0
-        #total_rmse = 0
-        #total_pcc = 0
-        #average_rmse = 0
-        #average_pcc = 0
+        overall_total_expression_target = 0
+        overall_total_expression_pred = 0
+        overall_total_frames_filtered = 0
+
         all_preds = []
         all_targets = []
         # Initialize lists to store KS statistic and p-value
@@ -659,6 +688,8 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
             z_batch = z_batch.to(device)
+
+
 
             ########## Obs filtering begin  #######
             # Initialize container for filtered indices
@@ -716,6 +747,18 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 print("la prediction :")
                 print(np.round(best_predictions[i]))
 
+            ######### Evaluation Metrics 1  per MI behaviors / AU #####
+            # Accumulate metrics for each batch
+            batch_total_expression_target, batch_total_expression_pred, batch_total_frames_filtered = \
+                evaluate_expression_match(best_predictions, y_batch.cpu().numpy(), z_batch.cpu().numpy(),sequence_length, 1, 1)
+
+            # Update overall metrics
+            overall_total_expression_target += batch_total_expression_target
+            overall_total_expression_pred += batch_total_expression_pred
+            overall_total_frames_filtered += batch_total_frames_filtered
+
+            #######  Evaluation metrics 2 ##########
+
             # Convert the tensors to lists of integers for edit distance computation
             y_pred_list = best_predictions.tolist()
             y_target_list = y_batch.cpu().numpy().tolist()
@@ -725,19 +768,6 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             all_preds.extend(y_pred_list)
             all_targets.extend(y_target_list)
 
-            # Convert lists to numpy arrays for easier manipulation
-            y_pred_arr = np.array(y_pred_list)
-            y_target_arr = np.array(y_target_list)
-            
-            # # RMSE
-            # rmse = np.sqrt(mean_squared_error(y_target_arr, y_pred_arr))
-            # total_rmse+= rmse
-            #
-            #
-            # # Pearson Correlation Coefficient (PCC)
-            # pcc = np.corrcoef(y_target_arr.flatten(), y_pred_arr.flatten())[0, 1]
-            # total_pcc+= pcc
-            
 
             # Compute metrics for each sequence in the batch
             for pred, target, target_obs in zip(y_pred_list, y_target_list, x_target_list):
@@ -807,23 +837,6 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 correct_non_activations += np.sum((pred_array == target_array) & ~is_active_target)
                 total_non_activations_ground_truth += np.sum(~is_active_target)
 
-        # # Convert the accumulated lists to numpy arrays for easier manipulation
-        # all_preds_arr = np.array(all_preds)
-        # all_targets_arr = np.array(all_targets)
-
-        # # Calculate precision, recall, and F1 score across the entire dataset
-        # precision, recall, f1_score, _ = precision_recall_fscore_support(all_targets_arr, all_preds_arr, average='macro')
-        # print(f"Precision: {precision:.3f}")
-        # print(f"Recall: {recall:.3f}")
-        # print(f"F1 Score: {f1_score:.3f}")
-        #
-
-        # average_rmse = total_rmse / total_batches
-        # average_rmse = average_rmse / 3
-        # print(f'RMSE: {average_rmse:.4f}')
-        # average_pcc = total_pcc /total_batches
-        # print(f'PCC: {average_pcc:.4f}')
-
         print(f'Average Validation Loss for Noise Estimation: {average_validation_loss}')
 
         # Calculate average KS statistic and p-value
@@ -857,14 +870,22 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         ahr_mouthup = correct_activations_for_class_1 / total_activations_ground_truth_1 if total_activations_ground_truth_1 > 0 else 0
         ahr_nosewrinkle = correct_activations_for_class_2 / total_activations_ground_truth_2 if total_activations_ground_truth_2 > 0 else 0
         ahr_mouthdown = correct_activations_for_class_3 / total_activations_ground_truth_3 if total_activations_ground_truth_3 > 0 else 0
-        
-        
+
         print(f'AHR: {ahr:.4f}')
         print(f'ACHR: {achr:.4f}')
         print(f'NHR: {nhr:.4f}')
         print(f'AHR MOUTH UP: {ahr_mouthup:.4f}')
         print(f'AHR MOUTH DOWN: {ahr_mouthdown:.4f}')
         print(f'AHR NOSE WRINKLE: {ahr_nosewrinkle:.4f}')
+
+        # Compute overall metrics after the loop
+        if overall_total_frames_filtered > 0:
+            overall_target_rate = overall_total_expression_target / overall_total_frames_filtered
+            overall_pred_rate = overall_total_expression_pred / overall_total_frames_filtered
+            print(f"Overall target expression rate: {overall_target_rate:.2f}")
+            print(f"Overall predicted expression rate: {overall_pred_rate:.2f}")
+        else:
+            print("No sequences with specified MI act found in the dataset.")
 
 
 
