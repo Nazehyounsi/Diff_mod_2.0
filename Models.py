@@ -554,8 +554,7 @@ class Model_mlp_diff(nn.Module):
         self.transformer_dim = self.trans_emb_dim * self.nheads
 
         # Initialize SequenceTransformers for y and x
-        #self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, 128)
-
+        self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, 128)
         #OPTION2
         #self.reducer = SequenceReducer(128, 128)
 
@@ -563,7 +562,7 @@ class Model_mlp_diff(nn.Module):
         # Linear layers to project embeddings to transformer dimension
         self.t_to_input = nn.Linear(mi_embedder.output_dim, self.trans_emb_dim)
         self.y_to_input = nn.Linear(sequence_length, self.trans_emb_dim)
-        self.x_to_input = nn.Linear(observation_embedder.output_dim, self.trans_emb_dim)
+        self.x_to_input = nn.Linear(128, self.trans_emb_dim)
 
         # Positional embedding for transformer
         self.pos_embed = TimeSiren(1, self.trans_emb_dim)
@@ -594,12 +593,12 @@ class Model_mlp_diff(nn.Module):
         
         x = self.observation_embedder(x)
 
-        #z = self.mi_embedder(z)
+        z = self.mi_embedder(z)
         # mask out context embedding, x_e, if context_mask == 1
         #context_mask = context_mask.repeat(z.shape[1], 1).T
         #z = z * (-1 * (1 - context_mask))
 
-        #x = self.merger(x,z)
+        x = self.merger(x,z)
         #Option2
         #x = self.reducer(x)
 
