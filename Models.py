@@ -555,6 +555,7 @@ class Model_mlp_diff(nn.Module):
 
         # Initialize SequenceTransformers for y and x
         #self.merger = Merger(observation_embedder.output_dim, mi_embedder.output_dim, 128)
+
         #OPTION2
         #self.reducer = SequenceReducer(128, 128)
 
