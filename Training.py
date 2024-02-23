@@ -489,9 +489,9 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
 
 
     #OPTION 1
-    #observation_embedder = ObservationEmbedder(num_facial_types, facial_embed_dim, cnn_output_dim, lstm_hidden_dim, sequence_length)
+    observation_embedder = ObservationEmbedder(num_facial_types, facial_embed_dim, cnn_output_dim, lstm_hidden_dim, sequence_length)
     #OPTION 2
-    observation_embedder = ObservationEmbedder(num_facial_types, facial_embed_dim, lstm_hidden_dim, sequence_length)
+    #observation_embedder = ObservationEmbedder(num_facial_types, facial_embed_dim, lstm_hidden_dim, sequence_length)
     #OPTION3
     #observation_embedder = ObservationEmbedder(num_facial_types, facial_embed_dim, num_heads = 8, num_layers=2, sequence_length = 137, transformer_input_dim = 256)
 
