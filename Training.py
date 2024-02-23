@@ -660,6 +660,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             y_batch = y_batch.to(device)
             z_batch = z_batch.to(device)
 
+            ########## Obs filtering begin  #######
             # Initialize container for filtered indices
             valid_indices = []
 
@@ -676,6 +677,8 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             x_batch = x_batch[valid_indices]
             y_batch = y_batch[valid_indices]
             z_batch = z_batch[valid_indices]
+
+            ########## Obs filtering end #######
 
             # Generate multiple predictions for KDE
             all_predictions = []
