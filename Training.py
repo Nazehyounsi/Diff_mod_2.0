@@ -179,7 +179,10 @@ def transform_obs_to_sequence(events, sequence_length):
             start_sample = int(start_time * sequence_length)
             end_sample = int(start_sample + (duration * sequence_length))
             for i in range(start_sample, min(end_sample, sequence_length)):
-                sequence[i] = event_type
+                if event_type == round(event_type):
+                    sequence[i] = event_type
+                else:
+                    sequence[i] = 0
     return sequence, mi_behaviors
 
 def load_data_from_folder(folder_path):
