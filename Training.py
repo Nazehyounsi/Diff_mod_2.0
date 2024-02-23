@@ -657,6 +657,23 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             y_batch = y_batch.to(device)
             z_batch = z_batch.to(device)
 
+            # Initialize container for filtered indices
+            valid_indices = []
+
+            # Check if the data point in x_batch is only composed of 0 and filter them
+            for idx, x in enumerate(x_batch):
+                if not torch.all(x == 0):
+                    valid_indices.append(idx)
+
+            # If all x_batch data points are composed of zeros, continue to the next batch
+            if not valid_indices:
+                continue
+
+            # Select only the valid data points for processing
+            x_batch = x_batch[valid_indices]
+            y_batch = y_batch[valid_indices]
+            z_batch = z_batch[valid_indices]
+
             # Generate multiple predictions for KDE
             all_predictions = []
             all_traces = []
@@ -672,7 +689,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             # Apply KDE for each data point and store best predictions
             best_predictions = np.zeros_like(y_batch.cpu().numpy())
             #best_traces = []
-            for i in range(y_batch.shape[0]):
+            for i, idx in enumerate(valid_indices):
                 single_pred_samples = np.array([pred[i] for pred in all_predictions])
                 #single_trace_samples = np.array([trace[i] for trace in all_traces])
                 kde = KernelDensity(kernel='gaussian', bandwidth=0.1).fit(single_pred_samples)
