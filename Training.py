@@ -668,9 +668,25 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         total_activations_ground_truth = 0
         correct_non_activations = 0
         total_non_activations_ground_truth = 0
-        overall_total_expression_target = 0
-        overall_total_expression_pred = 0
-        overall_total_frames_filtered = 0
+        overall_total_expression_target1 = 0
+        overall_total_expression_pred1 = 0
+        overall_total_frames_filtered1 = 0
+        overall_total_expression_target2 = 0
+        overall_total_expression_pred2 = 0
+        overall_total_frames_filtered2 = 0
+        overall_total_expression_target3 = 0
+        overall_total_expression_pred3 = 0
+        overall_total_frames_filtered3 = 0
+        overall_total_expression_target4 = 0
+        overall_total_expression_pred4 = 0
+        overall_total_frames_filtered4 = 0
+        overall_total_expression_target5 = 0
+        overall_total_expression_pred5 = 0
+        overall_total_frames_filtered5 = 0
+        overall_total_expression_target6 = 0
+        overall_total_expression_pred6 = 0
+        overall_total_frames_filtered6 = 0
+
 
         all_preds = []
         all_targets = []
@@ -748,14 +764,64 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 print(np.round(best_predictions[i]))
 
             ######### Evaluation Metrics 1  per MI behaviors / AU #####
-            # Accumulate metrics for each batch
-            batch_total_expression_target, batch_total_expression_pred, batch_total_frames_filtered = \
+            # Accumulate metrics for each batch (1,1)
+            batch_total_expression_target1, batch_total_expression_pred1, batch_total_frames_filtered1 = \
                 evaluate_expression_match(best_predictions, y_batch.cpu().numpy(), z_batch.cpu().numpy(),sequence_length, 1, 1)
 
             # Update overall metrics
-            overall_total_expression_target += batch_total_expression_target
-            overall_total_expression_pred += batch_total_expression_pred
-            overall_total_frames_filtered += batch_total_frames_filtered
+            overall_total_expression_target1 += batch_total_expression_target1
+            overall_total_expression_pred1 += batch_total_expression_pred1
+            overall_total_frames_filtered1 += batch_total_frames_filtered1
+
+            # Accumulate metrics for each batch (1,2)
+            batch_total_expression_target2, batch_total_expression_pred2, batch_total_frames_filtered2 = \
+                evaluate_expression_match(best_predictions, y_batch.cpu().numpy(), z_batch.cpu().numpy(),
+                                          sequence_length, 2, 1)
+
+            # Update overall metrics
+            overall_total_expression_target2 += batch_total_expression_target2
+            overall_total_expression_pred2 += batch_total_expression_pred2
+            overall_total_frames_filtered2 += batch_total_frames_filtered2
+
+            # Accumulate metrics for each batch (1,3)
+            batch_total_expression_target3, batch_total_expression_pred3, batch_total_frames_filtered3 = \
+                evaluate_expression_match(best_predictions, y_batch.cpu().numpy(), z_batch.cpu().numpy(),
+                                          sequence_length, 3, 1)
+
+            # Update overall metrics
+            overall_total_expression_target3 += batch_total_expression_target3
+            overall_total_expression_pred3 += batch_total_expression_pred3
+            overall_total_frames_filtered3 += batch_total_frames_filtered3
+
+            # Accumulate metrics for each batch (1,4) ==  (9 , 1)
+            batch_total_expression_target4, batch_total_expression_pred4, batch_total_frames_filtered4 = \
+                evaluate_expression_match(best_predictions, y_batch.cpu().numpy(), z_batch.cpu().numpy(),
+                                          sequence_length, 1, 9)
+
+            # Update overall metrics
+            overall_total_expression_target4 += batch_total_expression_target4
+            overall_total_expression_pred4 += batch_total_expression_pred4
+            overall_total_frames_filtered4 += batch_total_frames_filtered4
+
+            # Accumulate metrics for each batch (1,5) ==  (9 , 2)
+            batch_total_expression_target5, batch_total_expression_pred5, batch_total_frames_filtered5 = \
+                evaluate_expression_match(best_predictions, y_batch.cpu().numpy(), z_batch.cpu().numpy(),
+                                          sequence_length, 2, 9)
+
+            # Update overall metrics
+            overall_total_expression_target5 += batch_total_expression_target5
+            overall_total_expression_pred5 += batch_total_expression_pred5
+            overall_total_frames_filtered5 += batch_total_frames_filtered5
+
+            # Accumulate metrics for each batch (1,6) ==  (9 , 3) 9 == question
+            batch_total_expression_target6, batch_total_expression_pred6, batch_total_frames_filtered6 = \
+                evaluate_expression_match(best_predictions, y_batch.cpu().numpy(), z_batch.cpu().numpy(),
+                                          sequence_length, 3, 9)
+
+            # Update overall metrics
+            overall_total_expression_target6 += batch_total_expression_target6
+            overall_total_expression_pred6 += batch_total_expression_pred6
+            overall_total_frames_filtered6 += batch_total_frames_filtered6
 
             #######  Evaluation metrics 2 ##########
 
@@ -879,13 +945,59 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         print(f'AHR NOSE WRINKLE: {ahr_nosewrinkle:.4f}')
 
         # Compute overall metrics after the loop
-        if overall_total_frames_filtered > 0:
-            overall_target_rate = overall_total_expression_target / overall_total_frames_filtered
-            overall_pred_rate = overall_total_expression_pred / overall_total_frames_filtered
-            print(f"Overall target expression rate: {overall_target_rate:.2f}")
-            print(f"Overall predicted expression rate: {overall_pred_rate:.2f}")
+        if overall_total_frames_filtered1 > 0:
+            overall_target_rate = overall_total_expression_target1 / overall_total_frames_filtered1
+            overall_pred_rate = overall_total_expression_pred1 / overall_total_frames_filtered1
+            print(f"Overall target expression rate Therapist/ Mouthup: {overall_target_rate:.2f}")
+            print(f"Overall predicted expression rate Therapist/ Mouthup: {overall_pred_rate:.2f}")
         else:
             print("No sequences with specified MI act found in the dataset.")
+
+        # Compute overall metrics after the loop
+        if overall_total_frames_filtered2 > 0:
+            overall_target_rate = overall_total_expression_target2 / overall_total_frames_filtered2
+            overall_pred_rate = overall_total_expression_pred2 / overall_total_frames_filtered2
+            print(f"Overall target expression rate Therapist/ NW: {overall_target_rate:.2f}")
+            print(f"Overall predicted expression rate Therapist/ NW: {overall_pred_rate:.2f}")
+        else:
+            print("No sequences with specified MI act found in the dataset.")
+
+        # Compute overall metrics after the loop
+        if overall_total_frames_filtered3 > 0:
+            overall_target_rate = overall_total_expression_target3 / overall_total_frames_filtered3
+            overall_pred_rate = overall_total_expression_pred3 / overall_total_frames_filtered3
+            print(f"Overall target expression rate Therapist/ Mouthdown: {overall_target_rate:.2f}")
+            print(f"Overall predicted expression rate Therapist/ Mouthdown: {overall_pred_rate:.2f}")
+        else:
+            print("No sequences with specified MI act found in the dataset.")
+
+        # Compute overall metrics after the loop
+        if overall_total_frames_filtered4 > 0:
+            overall_target_rate = overall_total_expression_target4 / overall_total_frames_filtered4
+            overall_pred_rate = overall_total_expression_pred4 / overall_total_frames_filtered4
+            print(f"Overall target expression rate Question/ Mouthup: {overall_target_rate:.2f}")
+            print(f"Overall predicted expression rate Question/ Mouthup: {overall_pred_rate:.2f}")
+        else:
+            print("No sequences with specified MI act found in the dataset.")
+
+        # Compute overall metrics after the loop
+        if overall_total_frames_filtered5 > 0:
+            overall_target_rate = overall_total_expression_target5 / overall_total_frames_filtered5
+            overall_pred_rate = overall_total_expression_pred5 / overall_total_frames_filtered5
+            print(f"Overall target expression rate Question/ NW: {overall_target_rate:.2f}")
+            print(f"Overall predicted expression rate Question/ NW: {overall_pred_rate:.2f}")
+        else:
+            print("No sequences with specified MI act found in the dataset.")
+
+        # Compute overall metrics after the loop
+        if overall_total_frames_filtered6 > 0:
+            overall_target_rate = overall_total_expression_target6 / overall_total_frames_filtered6
+            overall_pred_rate = overall_total_expression_pred6 / overall_total_frames_filtered6
+            print(f"Overall target expression rate Question/ Mouthdown: {overall_target_rate:.2f}")
+            print(f"Overall predicted expression rate Question/ Mouthdown: {overall_pred_rate:.2f}")
+        else:
+            print("No sequences with specified MI act found in the dataset.")
+
 
 
 
