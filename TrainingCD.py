@@ -652,6 +652,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
 
 
 # DIRECT KDE CASE
+        indice_train = []
         extra_diffusion_steps = 0
         guide_weight = guide_w
         kde_samples = args.evaluation_param
@@ -729,6 +730,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
             for idx, x in enumerate(x_batch):
                 if not torch.all(x == 0):
                     valid_indices.append(idx)
+                    indice_train.append(idx)
 
             # If all x_batch data points are composed of zeros, continue to the next batch
             if not valid_indices:
@@ -1073,6 +1075,8 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         else:
             print("No sequences with specified MI act found in the dataset.")
 
+        
+        print(indice_train)
 
 
 
