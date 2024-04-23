@@ -504,7 +504,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         folder_path = 'C:/Users/NEZIH YOUNSI/Desktop/Hcapriori_input/Observaton_Context_Tuples'
 
     # Use MyCustomDataset instead of ClawCustomDataset
-    torch_data_train = MyCustomDataset(folder_path, train_or_test="train", train_prop=0.90, oversample_rare_events=True)
+    torch_data_train = MyCustomDataset(folder_path, train_or_test="train", train_prop=0.90, indices_path = 'data_indices.json', oversample_rare_events=True)
     test_dataset = MyCustomDataset(folder_path, train_or_test="test", train_prop=0.90, indices_path = 'data_indices.json',oversample_rare_events=True)
     dataload_train = DataLoader(torch_data_train, batch_size=batch_size, shuffle=True, collate_fn=MyCustomDataset.collate_fn)
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, collate_fn=MyCustomDataset.collate_fn)
@@ -1077,8 +1077,6 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
         else:
             print("No sequences with specified MI act found in the dataset.")
 
-        
-        print(indice_train)
 
 
 
