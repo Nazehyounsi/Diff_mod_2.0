@@ -374,6 +374,8 @@ class MyCustomDataset(Dataset):
             with open(indices_path, 'r') as f:
                 indices = json.load(f)
             train_indices, test_indices = indices['train'], indices['test']
+            print("test indices lOADED ! ")
+            print(test_indices)
         else:
             # Otherwise, create the split and save the indices
             shuffled_indices = np.random.permutation(len(processed_data))
@@ -771,16 +773,16 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                 best_predictions[i][best_predictions[i] == 4] = 3  # Replace 4 with 3
                 best_predictions[i][best_predictions[i] < 0] = 0  # Replace negative values with 0
                 
-                print("la target :")
-                print(y_batch[i])
-                print("la sequence obs :")
-                print(x_batch[i])
-                print("le Mi behaviors :")
-                print(z_batch[i])
-                print("le chunk_descriptor")
-                print(chunk_descriptor[i])
-                print("la prediction :")
-                print(np.round(best_predictions[i]))
+                #print("la target :")
+                #print(y_batch[i])
+                #print("la sequence obs :")
+                #print(x_batch[i])
+                #print("le Mi behaviors :")
+                #print(z_batch[i])
+                #print("le chunk_descriptor")
+                #print(chunk_descriptor[i])
+                #print("la prediction :")
+                #print(np.round(best_predictions[i]))
 
             ######### Evaluation Metrics 1  per MI behaviors / AU #####
             # Accumulate metrics for each batch (1,1)
