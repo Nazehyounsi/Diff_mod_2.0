@@ -771,6 +771,7 @@ def training(experiment, n_epoch, lrate, device, n_hidden, batch_size, n_T, net_
                  # Apply modifications to each element in the sequence
                 best_predictions[i] = np.round(best_predictions[i])
                 best_predictions[i][best_predictions[i] == 4] = 3  # Replace 4 with 3
+                best_prediction[best_prediction > 5] = 0
                 best_predictions[i][best_predictions[i] < 0] = 0  # Replace negative values with 0
                 
                 #print("la target :")
